@@ -1,74 +1,58 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
-venv/
-env/
-ENV/
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.Python
+venv/
+env/
 
-# Build outputs
-dist/
-dist-ssr/
-build/
-*.local
-*.so
-develop-eggs/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-
-# Environment variables
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
-*.local
+*.key
+secrets.json
+credentials.json
 
-# Logs and databases
-logs/
+# Build directories
+dist/
+build/
+*.egg-info/
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-*.db
-*.sqlite3
+debug.log
 
-# Test coverage
-.coverage
+# Testing
 coverage/
 .pytest_cache/
+.coverage
 htmlcov/
 
-# IDE and editor files
-.idea/
-.vscode/*
-!.vscode/extensions.json
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# ML specific
-/models/checkpoints/
-*.pt
-*.pth
-*.onnx
-*.mlmodel
+# Production build
+/Frontend/my-react-app/dist/
+/Frontend/my-react-app/build/
 
 # Temporary files
 *.tmp
-*.temp
+.cache/
 .temp/
+
+# Database
+*.sqlite3
+*.db
+
+# ML model files
+*.h5
+*.pkl
+*.model
+*.bin
