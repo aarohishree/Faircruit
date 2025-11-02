@@ -5,6 +5,7 @@ import httpx
 from datetime import datetime, timedelta
 from typing import Optional, Any, List, Dict, Annotated
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, UploadFile, File, APIRouter, WebSocket, WebSocketDisconnect
+from routers import ml as ml_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
@@ -21,6 +22,20 @@ from dotenv import load_dotenv
 import re
 import asyncio
 from bson import ObjectId
+import sys
+# --- ML Module Import Setup ---
+ML_DIR = os.path.dirname(__file__)
+sys.path.insert(0, ML_DIR)
+
+try:
+    from timed_assessment_system import run_full_analysis
+    from ai_engines.gemini_engine import GeminiEngine
+    ML_READY = True
+    logger.info("ML modules loaded successfully")
+except Exception as e:
+    logger.error(f"ML LOAD FAILED: {e}")
+    ML_READY = False
+    run_full_analysis = lambda *a, **k: {"error": "ML service unavailable"}
 
 # --- Rate Limiter Setup ---
 def get_remote_address_with_proxy(request: Request) -> str:
@@ -43,6 +58,7 @@ class Settings(BaseModel):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     MONGO_URI: str = os.environ.get("MONGO_URI")
     DB_NAME: str = "faircruit_db"
+    GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY")
     ML_SERVICE_BASE_URL: str = os.environ.get("ML_SERVICE_BASE_URL", "")
     ML_API_KEY: str = os.environ.get("ML_API_KEY", "")
     BACKEND_CORS_ORIGINS: list[str] = [o for o in os.environ.get("BACKEND_CORS_ORIGINS", "").split(",") if o]
@@ -378,20 +394,64 @@ async def mock_upload_file(file: UploadFile) -> str:
         raise
 
 async def call_ml_service(task: str, payload: dict) -> dict:
+    # === PREFER LOCAL ML ===
+    if ML_READY and getattr(settings, "USE_LOCAL_ML", False):
+        try:
+            app_id = payload["application_id"]
+            job_id = payload["job_id"]
+
+            # Fetch job description
+            job_doc = await JOBS_COL.find_one({"_id": safe_object_id(job_id, "job_id")})
+            job_desc = job_doc.get("description", "") if job_doc else ""
+
+            # Extract CV text
+            cv_text = ""
+            evidence = payload.get("evidence", {})
+            if "cv_text" in evidence:
+                cv_text = evidence["cv_text"]
+            elif "cv_file" in evidence:
+                # You'd extract text from file here
+                pass
+
+            # RUN LOCAL AI
+            full_result = run_full_analysis(
+                cv_text=cv_text,
+                job_description=job_desc,
+                applicant_id=app_id,
+                job_id=job_id
+            )
+
+            # Map results to expected format
+            if task == "extract_features":
+                return {"features": full_result.get("features", {})}
+            elif task == "score_profile":
+                return {"score": full_result.get("score", 0), "breakdown": full_result.get("breakdown", {})}
+            elif task == "fairness_check":
+                passed = full_result.get("fairness", True) or full_result.get("fairness_result", "PASS") == "PASS"
+                return {"result": "PASS" if passed else "FAIL"}
+            elif task == "generate_report":
+                return {
+                    "report_narrative": full_result.get("report", "No report."),
+                    "visuals_urls": full_result.get("visuals", []),
+                    "feedback": full_result.get("feedback", "")
+                }
+
+        except Exception as e:
+            logger.error(f"Local ML {task} failed: {e}")
+            raise HTTPException(status_code=500, detail=f"AI error: {e}")
+
+    # === FALLBACK: HTTP (OLD WAY) ===
     url = f"{settings.ML_SERVICE_BASE_URL.rstrip('/')}/{task}"
     headers = {"Authorization": f"Bearer {settings.ML_API_KEY}"} if settings.ML_API_KEY else {}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(url, json=payload, headers=headers)
             if resp.status_code != 200:
-                logger.error(f"ML service {task} returned {resp.status_code}: {resp.text}")
-                await log_error(None, "ML_SERVICE_ERROR", f"ML service {task} failed: {resp.text}")
-                raise HTTPException(status_code=502, detail="ML service error")
+                raise HTTPException(status_code=502, detail=f"ML service error: {resp.text}")
             return resp.json()
-    except httpx.RequestError as exc:
-        logger.error(f"ML service request failed for {task}: {exc}")
-        await log_error(None, "ML_SERVICE_CONNECTION", str(exc))
-        raise HTTPException(status_code=502, detail="Could not reach ML service")
+    except Exception as e:
+        logger.error(f"HTTP ML failed: {e}")
+        raise HTTPException(status_code=502, detail="ML unreachable")
 
 async def run_full_ml_pipeline(application_id: str):
     try:
@@ -1099,6 +1159,7 @@ app.include_router(admin_router, prefix=settings.API_V1_STR)
 app.include_router(messaging_router, prefix=settings.API_V1_STR)
 app.include_router(feedback_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix=settings.API_V1_STR)
+app.include_router(ml_router.router)
 
 # --- Run ---
 if __name__ == "__main__":

@@ -1,41 +1,74 @@
-# Logs
-logs
+# Dependencies
+node_modules/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+*.local
+*.so
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+*.local
+
+# Logs and databases
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+*.db
+*.sqlite3
 
-node_modules
-dist
-dist-ssr
-*.local
+# Test coverage
+.coverage
+coverage/
+.pytest_cache/
+htmlcov/
 
-# Editor directories and files
+# IDE and editor files
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.env
-.env.local
+*.swp
+*.swo
 
-# ---- Backend (Python/FastAPI) ----
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.db
-*.sqlite3
-*.log
-venv/
-.env
-.env.*
-instance/
-.pytest_cache/
-.mypy_cache/
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# ML specific
+/models/checkpoints/
+*.pt
+*.pth
+*.onnx
+*.mlmodel
+
+# Temporary files
+*.tmp
+*.temp
+.temp/

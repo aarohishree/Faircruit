@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python verify_setup.py:*)",
+      "Bash(python:*)",
+      "Bash(more:*)",
+      "Bash(pip install:*)",
+      "Bash(findstr:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
