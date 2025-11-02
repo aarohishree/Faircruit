@@ -6,13 +6,140 @@ import { z as Zod } from 'zod';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './Faircruit.css';
-const VITE_API_BASE = import.meta.env.VITE_API_BASE;
-const VITE_WS_BASE = import.meta.env.VITE_WS_BASE;
+const VITE_API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+const VITE_WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000';
+
+// WebSocket connection handler
+const useWebSocket = (url) => {
+    const [ws, setWs] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const reconnectTimeoutRef = useRef();
+    const maxReconnectDelay = 5000;
+    const baseReconnectDelay = 1000;
+
+    const connect = useCallback(() => {
+        const socket = new WebSocket(url);
+
+        socket.onopen = () => {
+            setIsConnected(true);
+            console.log('WebSocket connected');
+        };
+
+        socket.onclose = () => {
+            setIsConnected(false);
+            console.log('WebSocket disconnected, attempting to reconnect...');
+            // Exponential backoff for reconnection
+            const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+            reconnectTimeoutRef.current = setTimeout(connect, delay);
+        };
+
+        socket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        setWs(socket);
+    }, [url]);
+
+    useEffect(() => {
+        connect();
+        return () => {
+            if (ws) {
+                ws.close();
+            }
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+            }
+        };
+    }, [connect]);
 const VITE_MAX_UPLOAD_SIZE_BYTES = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_BYTES) || 5242880;
 const VITE_ALLOWED_UPLOAD_MIMES = import.meta.env.VITE_ALLOWED_UPLOAD_MIMES || 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4';
 
 const ALLOWED_MIMES_ARRAY = VITE_ALLOWED_UPLOAD_MIMES.split(',').map(m => m.trim());
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+    defaultOptions: {
+        queries: {
+            retry: 2,
+            staleTime: 5 * 60 * 1000, // 5 minutes
+            cacheTime: 30 * 60 * 1000, // 30 minutes
+        },
+    },
+});
+
+// WebSocket Context
+const WebSocketContext = createContext(null);
+
+const useWebSocket = () => {
+    const context = useContext(WebSocketContext);
+    if (!context) {
+        throw new Error('useWebSocket must be used within a WebSocketProvider');
+    }
+    return context;
+};
+
+const WebSocketProvider = ({ children }) => {
+    const [socket, setSocket] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const [retryCount, setRetryCount] = useState(0);
+    const maxRetries = 5;
+    const retryDelay = 1000; // Start with 1 second
+
+    const connect = useCallback(() => {
+        if (retryCount >= maxRetries) {
+            console.log('Max retries reached, stopping reconnection attempts');
+            return;
+        }
+
+        const ws = new WebSocket(VITE_WS_BASE);
+
+        ws.onopen = () => {
+            console.log('WebSocket connected');
+            setIsConnected(true);
+            setRetryCount(0);
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            setIsConnected(false);
+            setSocket(null);
+
+            // Exponential backoff
+            const timeout = retryDelay * Math.pow(2, retryCount);
+            setTimeout(() => {
+                setRetryCount(prev => prev + 1);
+                connect();
+            }, timeout);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        setSocket(ws);
+    }, [retryCount]);
+
+    useEffect(() => {
+        connect();
+        return () => {
+            if (socket) {
+                socket.close();
+            }
+        };
+    }, [connect]);
+
+    const sendMessage = useCallback((message) => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(message));
+        } else {
+            console.warn('WebSocket is not connected');
+        }
+    }, [socket]);
+
+    return (
+        <WebSocketContext.Provider value={{ isConnected, sendMessage }}>
+            {children}
+        </WebSocketContext.Provider>
+    );
+};
 
 const CompetencySchema = Zod.object({
     level: Zod.string().nonempty('Level is required'),
@@ -75,10 +202,46 @@ const AuthContext = createContext();
 const useAuth = () => useContext(AuthContext);
 
 const AuthProvider = ({ children }) => {
-    const [token, setToken] = useState(null);
-    const [user, setUser] = useState(null);
+    const [token, setToken] = useState(() => localStorage.getItem('authToken'));
+    const [user, setUser] = useState(() => {
+        const savedUser = localStorage.getItem('user');
+        return savedUser ? JSON.parse(savedUser) : null;
+    });
     const navigate = useContext(RouterContext).navigate;
     const addToast = useToast();
+
+    // Persist auth state
+    useEffect(() => {
+        if (token) {
+            localStorage.setItem('authToken', token);
+        } else {
+            localStorage.removeItem('authToken');
+        }
+    }, [token]);
+
+    useEffect(() => {
+        if (user) {
+            localStorage.setItem('user', JSON.stringify(user));
+        } else {
+            localStorage.removeItem('user');
+        }
+    }, [user]);
+
+    const handleLogout = useCallback(async () => {
+        try {
+            await authAxios.post('/api/auth/logout');
+        } catch (error) {
+            console.error('Logout error:', error);
+        } finally {
+            setToken(null);
+            setUser(null);
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            queryClient.clear();
+            navigate('/');
+            addToast('Successfully logged out', 'success');
+        }
+    }, [navigate, addToast]);
 
     useEffect(() => {
         const interceptor = authAxios.interceptors.request.use(config => {
