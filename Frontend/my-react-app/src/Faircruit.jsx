@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, createContext, useReducer, useCallback, useRef } from 'react';
-import ReactDOM from 'react-dom/client';
+// import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useMutation } from '@tanstack/react-query';
 import axios from 'axios';
 import { z as Zod } from 'zod';
@@ -9,48 +9,40 @@ import './Faircruit.css';
 const VITE_API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
 const VITE_WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000';
 
-// WebSocket connection handler
-const useWebSocket = (url) => {
-    const [ws, setWs] = useState(null);
-    const [isConnected, setIsConnected] = useState(false);
-    const reconnectTimeoutRef = useRef();
-    const maxReconnectDelay = 5000;
-    const baseReconnectDelay = 1000;
+    // const connect = useCallback(() => {
+    //     const socket = new WebSocket(url);
 
-    const connect = useCallback(() => {
-        const socket = new WebSocket(url);
+    //     socket.onopen = () => {
+    //         setIsConnected(true);
+    //         console.log('WebSocket connected');
+    //     };
 
-        socket.onopen = () => {
-            setIsConnected(true);
-            console.log('WebSocket connected');
-        };
+    //     socket.onclose = () => {
+    //         setIsConnected(false);
+    //         console.log('WebSocket disconnected, attempting to reconnect...');
+    //         // Exponential backoff for reconnection
+    //         const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
+    //         reconnectTimeoutRef.current = setTimeout(connect, delay);
+    //     };
 
-        socket.onclose = () => {
-            setIsConnected(false);
-            console.log('WebSocket disconnected, attempting to reconnect...');
-            // Exponential backoff for reconnection
-            const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
-            reconnectTimeoutRef.current = setTimeout(connect, delay);
-        };
+    //     socket.onerror = (error) => {
+    //         console.error('WebSocket error:', error);
+    //     };
 
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
+    //     setWs(socket);
+    // }, [url]);
 
-        setWs(socket);
-    }, [url]);
-
-    useEffect(() => {
-        connect();
-        return () => {
-            if (ws) {
-                ws.close();
-            }
-            if (reconnectTimeoutRef.current) {
-                clearTimeout(reconnectTimeoutRef.current);
-            }
-        };
-    }, [connect]);
+    // useEffect(() => {
+    //     connect();
+    //     return () => {
+    //         if (ws) {
+    //             ws.close();
+    //         }
+    //         if (reconnectTimeoutRef.current) {
+    //             clearTimeout(reconnectTimeoutRef.current);
+    //         }
+    //     };
+    // }, [connect]);
 const VITE_MAX_UPLOAD_SIZE_BYTES = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_BYTES) || 5242880;
 const VITE_ALLOWED_UPLOAD_MIMES = import.meta.env.VITE_ALLOWED_UPLOAD_MIMES || 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4';
 
@@ -1775,18 +1767,28 @@ const Redirect = ({ to }) => {
 };
 
 
-const App = () => (
-    <QueryClientProvider client={queryClient}>
-        <ToastProvider>
-            <RouterProvider>
-                <AuthProvider>
-                    <WSProvider>
-                        <AppContent />
-                    </WSProvider>
-                </AuthProvider>
-            </RouterProvider>
-        </ToastProvider>
-    </QueryClientProvider>
-);
+// const App = () => (
+//     <QueryClientProvider client={queryClient}>
+//         <ToastProvider>
+//             <RouterProvider>
+//                 <AuthProvider>
+//                     <WSProvider>
+//                         <AppContent />
+//                     </WSProvider>
+//                 </AuthProvider>
+//             </RouterProvider>
+//         </ToastProvider>
+//     </QueryClientProvider>
+// );
 
-export default App;
+// export default App;
+
+export {
+  QueryClientProvider,
+  queryClient,
+  ToastProvider,
+  RouterProvider,
+  AuthProvider,
+  WSProvider,
+  AppContent,
+};
