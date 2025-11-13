@@ -6,43 +6,8 @@ import { z as Zod } from 'zod';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import './Faircruit.css';
-const VITE_API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-const VITE_WS_BASE = import.meta.env.VITE_WS_BASE || 'ws://localhost:8000';
-
-    // const connect = useCallback(() => {
-    //     const socket = new WebSocket(url);
-
-    //     socket.onopen = () => {
-    //         setIsConnected(true);
-    //         console.log('WebSocket connected');
-    //     };
-
-    //     socket.onclose = () => {
-    //         setIsConnected(false);
-    //         console.log('WebSocket disconnected, attempting to reconnect...');
-    //         // Exponential backoff for reconnection
-    //         const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
-    //         reconnectTimeoutRef.current = setTimeout(connect, delay);
-    //     };
-
-    //     socket.onerror = (error) => {
-    //         console.error('WebSocket error:', error);
-    //     };
-
-    //     setWs(socket);
-    // }, [url]);
-
-    // useEffect(() => {
-    //     connect();
-    //     return () => {
-    //         if (ws) {
-    //             ws.close();
-    //         }
-    //         if (reconnectTimeoutRef.current) {
-    //             clearTimeout(reconnectTimeoutRef.current);
-    //         }
-    //     };
-    // }, [connect]);
+const VITE_API_BASE = import.meta.env.VITE_API_BASE 
+const VITE_WS_BASE = import.meta.env.VITE_WS_BASE
 const VITE_MAX_UPLOAD_SIZE_BYTES = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_BYTES) || 5242880;
 const VITE_ALLOWED_UPLOAD_MIMES = import.meta.env.VITE_ALLOWED_UPLOAD_MIMES || 'application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4';
 
@@ -55,137 +20,6 @@ const queryClient = new QueryClient({
             cacheTime: 30 * 60 * 1000, // 30 minutes
         },
     },
-});
-
-// WebSocket Context
-const WebSocketContext = createContext(null);
-
-const useWebSocket = () => {
-    const context = useContext(WebSocketContext);
-    if (!context) {
-        throw new Error('useWebSocket must be used within a WebSocketProvider');
-    }
-    return context;
-};
-
-const WebSocketProvider = ({ children }) => {
-    const [socket, setSocket] = useState(null);
-    const [isConnected, setIsConnected] = useState(false);
-    const [retryCount, setRetryCount] = useState(0);
-    const maxRetries = 5;
-    const retryDelay = 1000; // Start with 1 second
-
-    const connect = useCallback(() => {
-        if (retryCount >= maxRetries) {
-            console.log('Max retries reached, stopping reconnection attempts');
-            return;
-        }
-
-        const ws = new WebSocket(VITE_WS_BASE);
-
-        ws.onopen = () => {
-            console.log('WebSocket connected');
-            setIsConnected(true);
-            setRetryCount(0);
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            setIsConnected(false);
-            setSocket(null);
-
-            // Exponential backoff
-            const timeout = retryDelay * Math.pow(2, retryCount);
-            setTimeout(() => {
-                setRetryCount(prev => prev + 1);
-                connect();
-            }, timeout);
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-        };
-
-        setSocket(ws);
-    }, [retryCount]);
-
-    useEffect(() => {
-        connect();
-        return () => {
-            if (socket) {
-                socket.close();
-            }
-        };
-    }, [connect]);
-
-    const sendMessage = useCallback((message) => {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify(message));
-        } else {
-            console.warn('WebSocket is not connected');
-        }
-    }, [socket]);
-
-    return (
-        <WebSocketContext.Provider value={{ isConnected, sendMessage }}>
-            {children}
-        </WebSocketContext.Provider>
-    );
-};
-
-const CompetencySchema = Zod.object({
-    level: Zod.string().nonempty('Level is required'),
-    description: Zod.string().min(1, 'Description is required'),
-    evidence_type: Zod.string().nonempty('Evidence type is required')
-});
-
-const JobCreateSchema = Zod.object({
-    title: Zod.string().min(3, 'Title must be at least 3 characters'),
-    description: Zod.string().min(10, 'Description must be at least 10 characters'),
-    competencies: Zod.array(CompetencySchema).min(1, 'At least one competency required'),
-    evidence_types: Zod.array(Zod.string().nonempty()).min(1, 'At least one evidence type required'),
-    duration_minutes: Zod.number().min(10, 'Duration must be at least 10 minutes'),
-    criteria: Zod.string().min(10, 'Criteria must be at least 10 characters')
-});
-
-const ToastContext = createContext();
-
-const useToast = () => useContext(ToastContext);
-
-const ToastProvider = ({ children }) => {
-    const [toasts, setToasts] = useState([]);
-
-    const addToast = useCallback((message, type = 'info', duration = 5000) => {
-        const id = Date.now();
-        setToasts(prev => [...prev, { id, message, type }]);
-        setTimeout(() => removeToast(id), duration);
-    }, []);
-
-    const removeToast = useCallback((id) => {
-        setToasts(prev => prev.filter(toast => toast.id !== id));
-    }, []);
-
-    return (
-        <ToastContext.Provider value={addToast}>
-            {children}
-            <div className="toast-container">
-                {toasts.map(toast => (
-                    <div key={toast.id} className={`toast toast-${toast.type}`}>
-                        {toast.message}
-                    </div>
-                ))}
-            </div>
-        </ToastContext.Provider>
-    );
-};
-
-// const authAxios = axios.create({
-//     baseURL: VITE_API_BASE,
-//     headers: { 'Content-Type': 'application/json' }
-// });
-export const authAxios = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE,
-  headers: { 'Content-Type': 'application/json' },
 });
 
 
@@ -292,119 +126,189 @@ const AuthProvider = ({ children }) => {
     );
 };
 
-const WSContext = createContext();
+// WebSocket Context
+const WebSocketContext = createContext(null);
 
-const useWS = () => useContext(WSContext);
+const useWebSocket = () => {
+    const context = useContext(WebSocketContext);
+    if (!context) {
+        throw new Error('useWebSocket must be used within a WebSocketProvider');
+    }
+    return context;
+};
 
-const WSProvider = ({ children }) => {
-    const { token, isLoggedIn, user, logout } = useAuth();
-    const addToast = useToast();
-
-    const [ws, setWs] = useState(null);
+const WebSocketProvider = ({ children }) => {
+    const { user } = useAuth(); // ← ADD THIS LINE (GET USER FROM AUTH)
+    const [socket, setSocket] = useState(null);
     const [isConnected, setIsConnected] = useState(false);
-    const [messages, setMessages] = useState([]);
-    const [messageQueue, setMessageQueue] = useState([]);
-
-    const wsRef = useRef(null);
-    const retryTimeoutRef = useRef(null);
-    const backoffTime = useRef(1000);
+    const [retryCount, setRetryCount] = useState(0);
+    const maxRetries = 5;
+    const retryDelay = 1000;
 
     const connect = useCallback(() => {
-        if (!isLoggedIn || !user || wsRef.current) return;
-
-        const newWs = new WebSocket(`${VITE_WS_BASE}/messages/${user.id}`);
-        wsRef.current = newWs;
-        setWs(newWs);
-
-        newWs.onopen = () => {
-            console.log('WS: Connection established. Sending auth token.');
-            setIsConnected(true);
-            backoffTime.current = 1000;
-            newWs.send(JSON.stringify({ type: 'auth', token }));
-        };
-
-        newWs.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'auth_ok') {
-                console.log('WS: Authentication successful. Draining queue.');
-                setMessageQueue(prevQueue => {
-                    prevQueue.forEach(msg => newWs.send(JSON.stringify(msg)));
-                    return [];
-                });
-            } else if (data.type === 'new_message') {
-                setMessages(prev => [...prev, { ...data.payload, id: data.payload._id }]);
-            }
-        };
-
-        newWs.onclose = (event) => {
-            console.log('WS: Disconnected. Code:', event.code);
-            wsRef.current = null;
-            setIsConnected(false);
-            if (isLoggedIn) {
-                addToast("WebSocket disconnected. Attempting reconnect...", 'warning');
-                retryTimeoutRef.current = setTimeout(() => {
-                    backoffTime.current = Math.min(32000, backoffTime.current * 2);
-                    connect();
-                }, backoffTime.current);
-            }
-        };
-
-        newWs.onerror = (error) => {
-            console.error('WS Error:', error);
-            newWs.close();
-        };
-    }, [isLoggedIn, token, user, addToast]);
-
-    useEffect(() => {
-        if (isLoggedIn && user && !wsRef.current) {
-            connect();
-        } else if (!isLoggedIn && wsRef.current) {
-            wsRef.current.close();
-            wsRef.current = null;
-            clearTimeout(retryTimeoutRef.current);
-        }
-    }, [isLoggedIn, user, connect]);
-
-    const sendMessage = useCallback((receiver_id, content) => {
-        if (content.length > 2000) {
-            addToast("Message content exceeds 2000 character limit.", 'error');
+        if (!user?.id) {
+            console.log('No user ID, waiting for login...');
             return;
         }
 
-        const messagePayload = {
-            type: 'message',
-            payload: { receiver_id, content }
+        if (retryCount >= maxRetries) {
+            console.log('Max retries reached');
+            return;
+        }
+
+        // CORRECT URL WITH USER ID
+        const url = `${import.meta.env.VITE_WS_BASE}/api/v1/ws/messages/${user.id}`;
+        console.log('Connecting to:', url);
+        const ws = new WebSocket(url);
+
+        ws.onopen = () => {
+            console.log('WebSocket CONNECTED');
+            setIsConnected(true);
+            setRetryCount(0);
         };
 
-        if (isConnected && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(messagePayload));
-        } else {
-            setMessageQueue(prev => [...prev, messagePayload]);
-            addToast("Sending failed. Message queued for delivery on reconnect.", 'warning');
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'auth_ok') {
+                    console.log('AUTH OK — YOU ARE IN!');
+                } else {
+                    console.log('Message:', data);
+                }
+            } catch (e) {
+                console.log('Raw:', event.data);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('WebSocket DISCONNECTED');
+            setIsConnected(false);
+            setSocket(null);
+            const timeout = retryDelay * Math.pow(2, retryCount);
+            setTimeout(() => {
+                setRetryCount(prev => prev + 1);
+                connect();
+            }, timeout);
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket ERROR:', error);
+        };
+
+        setSocket(ws);
+    }, [user?.id, retryCount]); // ← ADD user?.id
+
+    useEffect(() => {
+        if (user?.id) {
+            connect();
         }
-    }, [isConnected, addToast]);
+        return () => {
+            if (socket) {
+                socket.close();
+            }
+        };
+    }, [user?.id, connect]); // ← ADD user?.id
+
+    const sendMessage = useCallback((message) => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(message));
+        } else {
+            console.warn('WebSocket not connected');
+        }
+    }, [socket]);
 
     return (
-        <WSContext.Provider value={{ isConnected, messages, sendMessage, messageQueue }}>
+        <WebSocketContext.Provider value={{ isConnected, sendMessage }}>
             {children}
-        </WSContext.Provider>
+        </WebSocketContext.Provider>
     );
 };
 
+const CompetencySchema = Zod.object({
+    level: Zod.string().nonempty('Level is required'),
+    description: Zod.string().min(1, 'Description is required'),
+    evidence_type: Zod.string().nonempty('Evidence type is required')
+});
+
+const JobCreateSchema = Zod.object({
+    title: Zod.string().min(3, 'Title must be at least 3 characters'),
+    description: Zod.string().min(10, 'Description must be at least 10 characters'),
+    competencies: Zod.array(CompetencySchema).min(1, 'At least one competency required'),
+    evidence_types: Zod.array(Zod.string().nonempty()).min(1, 'At least one evidence type required'),
+    duration_minutes: Zod.number().min(10, 'Duration must be at least 10 minutes'),
+    criteria: Zod.string().min(10, 'Criteria must be at least 10 characters')
+});
+
+const ToastContext = createContext();
+
+const useToast = () => useContext(ToastContext);
+
+const ToastProvider = ({ children }) => {
+    const [toasts, setToasts] = useState([]);
+
+    const addToast = useCallback((message, type = 'info', duration = 5000) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, message, type }]);
+        setTimeout(() => removeToast(id), duration);
+    }, []);
+
+    const removeToast = useCallback((id) => {
+        setToasts(prev => prev.filter(toast => toast.id !== id));
+    }, []);
+
+    return (
+        <ToastContext.Provider value={addToast}>
+            {children}
+            <div className="toast-container">
+                {toasts.map(toast => (
+                    <div key={toast.id} className={`toast toast-${toast.type}`}>
+                        {toast.message}
+                    </div>
+                ))}
+            </div>
+        </ToastContext.Provider>
+    );
+};
+
+export const authAxios = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+// ADD THIS INTERCEPTOR RIGHT AFTER
+authAxios.interceptors.request.use(config => {
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// RouterContext + RouterProvider (MISSING)
+// ───────────────────────────────────────────────────────────────────────
 const RouterContext = createContext();
+
+const useRouter = () => {
+    const context = useContext(RouterContext);
+    if (!context) {
+        throw new Error('useRouter must be used within RouterProvider');
+    }
+    return context;
+};
 
 const RouterProvider = ({ children }) => {
     const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
-    useEffect(() => {
-        const handlePopState = () => setCurrentPath(window.location.pathname);
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
-    }, []);
-
     const navigate = useCallback((path) => {
         window.history.pushState({}, '', path);
         setCurrentPath(path);
+    }, []);
+
+    useEffect(() => {
+        const handlePop = () => setCurrentPath(window.location.pathname);
+        window.addEventListener('popstate', handlePop);
+        return () => window.removeEventListener('popstate', handlePop);
     }, []);
 
     return (
@@ -413,6 +317,117 @@ const RouterProvider = ({ children }) => {
         </RouterContext.Provider>
     );
 };
+
+
+// const WSContext = createContext();
+
+// const useWS = () => useContext(WSContext);
+
+// const WSProvider = ({ children }) => {
+//     const { token, isLoggedIn, user } = useAuth();
+//     const addToast = useToast();
+
+//     const wsRef = useRef(null);
+//     const reconnectTimeoutRef = useRef(null);
+//     const backoffRef = useRef(1000);
+
+//     const [isConnected, setIsConnected] = useState(false);
+//     const [messages, setMessages] = useState([]);
+//     const [queue, setQueue] = useState([]);
+
+//     const connect = useCallback(() => {
+//         if (!isLoggedIn || !user?.id || wsRef.current) return;
+
+//         const url = `${VITE_WS_BASE}/messages/${user.id}`;
+//         const ws = new WebSocket(url);
+//         wsRef.current = ws;
+
+//         ws.onopen = () => {
+//             console.log('WS: open → sending auth');
+//             ws.send(JSON.stringify({ type: 'auth', token }));
+//             backoffRef.current = 1000;
+//         };
+
+//         ws.onmessage = (ev) => {
+//             try {
+//                 const data = JSON.parse(ev.data);
+//                 if (data.type === 'auth_ok') {
+//                     console.log('WS: auth_ok – draining queue');
+//                     setIsConnected(true);
+//                     setQueue((q) => {
+//                         q.forEach((msg) => ws.send(JSON.stringify(msg)));
+//                         return [];
+//                     });
+//                 } else if (data.type === 'new_message') {
+//                     const payload = data.payload;
+//                     setMessages((prev) => [
+//                         ...prev,
+//                         {
+//                             id: payload._id,
+//                             sender_id: payload.sender_id,
+//                             content: payload.content,
+//                             timestamp: new Date(payload.timestamp).getTime(),
+//                         },
+//                     ]);
+//                 }
+//             } catch (e) {
+//                 console.error('WS: bad JSON', ev.data);
+//             }
+//         };
+
+//         ws.onclose = (ev) => {
+//             console.log('WS: closed (code', ev.code, ')');
+//             wsRef.current = null;
+//             setIsConnected(false);
+
+//             if (isLoggedIn) {
+//                 const delay = backoffRef.current;
+//                 backoffRef.current = Math.min(backoffRef.current * 2, 30000);
+//                 reconnectTimeoutRef.current = setTimeout(connect, delay);
+//                 addToast(`WebSocket disconnected – reconnect in ${delay}ms`, 'warning');
+//             }
+//         };
+
+//         ws.onerror = (err) => {
+//             console.error('WS: error', err);
+//             ws.close();
+//         };
+//     }, [isLoggedIn, token, user?.id, addToast]);
+
+//     useEffect(() => {
+//         if (isLoggedIn && user?.id) connect();
+//         return () => {
+//             if (wsRef.current) wsRef.current.close();
+//             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+//         };
+//     }, [isLoggedIn, user?.id, connect]);
+
+//     const sendMessage = useCallback((receiver_id, content) => {
+//         if (!content || content.trim() === '') {
+//             addToast('Cannot send empty message', 'warning');
+//             return;
+//         }
+//         if (content.length > 2000) {
+//             addToast('Message too long (>2000 chars)', 'error');
+//             return;
+//         }
+
+//         const payload = { receiver_id, content };
+
+//         if (isConnected && wsRef.current?.readyState === WebSocket.OPEN) {
+//             wsRef.current.send(JSON.stringify(payload));
+//         } else {
+//             setQueue((q) => [...q, payload]);
+//             addToast('Not connected – message queued', 'info');
+//         }
+//     }, [isConnected, addToast]);
+
+//     return (
+//         <WSContext.Provider value={{ isConnected, messages, sendMessage, messageQueue: queue }}>
+//             {children}
+//         </WSContext.Provider>
+//     );
+// };
 
 const FaircruitLogo = () => (
     <div className="logo">
@@ -612,9 +627,9 @@ const RegisterForm = () => {
     );
 };
 
-const MessagingUI = ({ otherUserId = 'admin-support-id' }) => {
-    const { user, isRecruiter, isApplicant } = useAuth();
-    const { isConnected, messages, sendMessage, messageQueue } = useWS();
+const MessagingUI = ({ otherUserId }) => {
+    const { user } = useAuth();
+    const { isConnected, sendMessage } = useWebSocket();
     const [content, setContent] = useState('');
     const addToast = useToast();
     const messagesEndRef = useRef(null);
@@ -623,46 +638,41 @@ const MessagingUI = ({ otherUserId = 'admin-support-id' }) => {
         queryKey: ['messages', otherUserId],
         queryFn: async () => {
             const response = await authAxios.get(`/messages/${otherUserId}`);
-            return response.data.map(msg => ({
+            return response.data.items.map((msg) => ({
                 id: msg._id,
                 sender_id: msg.sender_id,
                 content: msg.content,
-                timestamp: new Date(msg.timestamp).getTime()
+                timestamp: new Date(msg.timestamp).getTime(),
             }));
         },
-        enabled: !!otherUserId
+        enabled: !!otherUserId && !!user?.id,
     });
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, history]);
-
-    const isSendDisabled = !isConnected || content.length === 0;
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (isSendDisabled) {
-            addToast("Cannot send: Not connected or message is empty.", 'warning');
-            return;
-        }
-        sendMessage(otherUserId, content);
+        if (!content.trim()) return;
+        sendMessage(otherUserId, content.trim());
         setContent('');
     };
 
-    if (historyLoading) return <div>Loading messages...</div>;
+    if (historyLoading) return <div>Loading chat...</div>;
 
-    const displayMessages = [...(history || []), ...messages].sort((a, b) => a.timestamp - b.timestamp);
+    const allMessages = [...(history || []), ...messages].sort((a, b) => a.timestamp - b.timestamp);
 
     return (
         <div className="message-container">
-            <h3 style={{ padding: '16px', borderBottom: '1px solid #eee' }}>
-                Chat with {isRecruiter ? 'Applicant' : 'Admin'} ({isConnected ? 'Online' : 'Offline - Queuing: ' + messageQueue.length})
+            <h3>
+                Chat with {otherUserId} ({isConnected ? 'Online' : 'Offline'} – Queued: {messageQueue.length})
             </h3>
             <div className="message-list">
-                {displayMessages.map(msg => (
+                {allMessages.map((msg) => (
                     <div
                         key={msg.id}
-                        className={`message-bubble ${msg.sender_id === user.id ? 'message-me' : 'message-them'}`}
+                        className={`message-bubble ${msg.sender_id === user?.id ? 'message-me' : 'message-them'}`}
                     >
                         {msg.content}
                     </div>
@@ -672,14 +682,15 @@ const MessagingUI = ({ otherUserId = 'admin-support-id' }) => {
             <form className="message-input-area" onSubmit={handleSubmit}>
                 <input
                     type="text"
-                    placeholder="Type your message (max 2000 chars)"
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
+                    placeholder="Type a message..."
                     maxLength={2000}
                     disabled={!isConnected}
-                    aria-label="Message Input"
                 />
-                <button type="submit" className="btn" disabled={isSendDisabled}>Send</button>
+                <button type="submit" className="btn" disabled={!isConnected || !content.trim()}>
+                    Send
+                </button>
             </form>
         </div>
     );
@@ -1487,21 +1498,41 @@ const RecruiterDashboard = () => {
     };
 
     return (
-        <div className="dashboard-layout">
-            <div className="sidebar">
-                <nav>
-                    {Object.keys(componentMap).map(key => (
-                        <a key={key} href="#" className={view === key ? 'active' : ''} onClick={() => { setView(key); setEditingJob(null); }}>
-                            {key.charAt(0).toUpperCase() + key.slice(1)}
-                        </a>
-                    ))}
-                </nav>
+  <>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
+      <h2>Job Postings</h2>
+      <button className="btn" onClick={() => setEditingJob({})}>+ Post New Job</button>
+    </div>
+    <div className="grid-3">
+      {jobs?.items?.length > 0 ? (
+        jobs.items.map(job => (
+          <div key={job.id} className="card" style={{ padding: '16px' }}>
+            <h4>{job.title}</h4>
+            <p style={{ color: 'var(--text-light)', fontSize: '0.9rem' }}>
+              {job.competencies.length} competencies defined.
+            </p>
+            <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
+              <button className="btn" style={{ padding: '8px 16px' }} onClick={() => setEditingJob(job)}>
+                Edit
+              </button>
+              <button
+                className="btn"
+                style={{ backgroundColor: '#cc3333', padding: '8px 16px' }}
+                onClick={() => {
+                  if (window.confirm('Are you sure?')) deleteJobMutation.mutate(job.id);
+                }}
+              >
+                Delete
+              </button>
             </div>
-            <div className="main-content">
-                {componentMap[view]}
-            </div>
-        </div>
-    );
+          </div>
+        ))
+      ) : (
+        <p>No jobs posted yet.</p>
+      )}
+    </div>
+  </>
+);
 };
 
 const AdminDashboard = () => {
@@ -1724,7 +1755,7 @@ const AppContent = () => {
         return `/dashboard/${user.role}`;
     };
 
-    let content;
+        let content;
 
     if (currentPath === '/') {
         content = <LandingPage />;
@@ -1736,15 +1767,20 @@ const AppContent = () => {
         content = isLoggedIn ? <ProtectedRoute><Redirect to={getDashboardPath()} /></ProtectedRoute> : <LoginForm />;
     } else if (currentPath === '/register') {
         content = <RegisterForm />;
-    } else if (currentPath.startsWith('/dashboard/applicant/test')) {
+    } 
+    else if (currentPath.startsWith('/dashboard/applicant/test')) {
         content = <ProtectedRoute allowedRoles={['applicant']}><TestFlow /></ProtectedRoute>;
-    } else if (currentPath === '/dashboard/applicant' || currentPath === '/dashboard/applicant/results') {
+    } 
+    else if (currentPath.startsWith('/dashboard/applicant')) {
         content = <ProtectedRoute allowedRoles={['applicant']}><ApplicantDashboard /></ProtectedRoute>;
-    } else if (currentPath === '/dashboard/recruiter') {
-        content = <ProtectedRoute allowedRoles={['recruiter']}><RecruiterDashboard /></ProtectedRoute>;
-    } else if (currentPath === '/dashboard/admin' || currentPath === '/dashboard/admin/analytics' || currentPath === '/dashboard/admin/audit-logs') {
+    } 
+    else if (currentPath.startsWith('/dashboard/recruiter')) {
+        content = <ProtectedRoute allowedRoles={['recruiter', 'admin']}><RecruiterDashboard /></ProtectedRoute>;
+    } 
+    else if (currentPath.startsWith('/dashboard/admin')) {
         content = <ProtectedRoute allowedRoles={['admin']}><AdminDashboard /></ProtectedRoute>;
-    } else {
+    } 
+    else {
         content = <NotFound />;
     }
 
@@ -1767,28 +1803,31 @@ const Redirect = ({ to }) => {
 };
 
 
-// const App = () => (
-//     <QueryClientProvider client={queryClient}>
-//         <ToastProvider>
-//             <RouterProvider>
-//                 <AuthProvider>
-//                     <WSProvider>
-//                         <AppContent />
-//                     </WSProvider>
-//                 </AuthProvider>
-//             </RouterProvider>
-//         </ToastProvider>
-//     </QueryClientProvider>
-// );
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <ToastProvider>
+      <RouterProvider>
+        <AuthProvider>
+          <WebSocketProvider>
+            <AppContent />
+          </WebSocketProvider>
+        </AuthProvider>
+      </RouterProvider>
+    </ToastProvider>
+  </QueryClientProvider>
+);
 
-// export default App;
+export default App;
 
+// ───────────────────────────────────────────────────────────────────────
+// NAMED EXPORTS FOR App.jsx (UPDATED — WSProvider REMOVED)
+// ───────────────────────────────────────────────────────────────────────
 export {
   QueryClientProvider,
   queryClient,
   ToastProvider,
   RouterProvider,
   AuthProvider,
-  WSProvider,
+  WebSocketProvider,   // ← CHANGED FROM WSProvider
   AppContent,
 };

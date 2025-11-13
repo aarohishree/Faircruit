@@ -7,7 +7,7 @@ import {
   ToastProvider,
   RouterProvider,
   AuthProvider,
-  WSProvider,
+  WebSocketProvider,  // FIXED: Was WSProvider
   AppContent,
 } from './faircruit.jsx';
 import './Faircruit.css';
@@ -18,9 +18,9 @@ const App = () => (
     <ToastProvider>
       <RouterProvider>
         <AuthProvider>
-          <WSProvider>
+          <WebSocketProvider>  {/* FIXED: Use WebSocketProvider */}
             <AppContent />
-          </WSProvider>
+          </WebSocketProvider>
         </AuthProvider>
       </RouterProvider>
     </ToastProvider>

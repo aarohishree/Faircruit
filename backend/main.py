@@ -594,6 +594,7 @@ async def register_user(user_in: UserCreate, request: Request):
         hashed_password = hash_password(user_in.password)
         user_doc = user_in.model_dump(exclude={"password"})
         user_doc["hashed_password"] = hashed_password
+        user_doc["created_at"] = datetime.utcnow()  # ADD THIS LINE
         result = await USERS_COL.insert_one(user_doc)
         created_user = await USERS_COL.find_one({"_id": result.inserted_id})
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -1024,8 +1025,8 @@ async def get_messages(other_user_id: str, page: int = 1, size: int = 50, curren
         await log_error(str(current_user.id), "VIEW_MESSAGES_ERROR", str(e))
         raise
 
-# --- WebSocket Endpoint ---
-@ws_router.websocket("/ws/messages/{user_id}")
+# --- WebSocket Endpoint (DIRECT ON APP) ---
+@app.websocket("/api/v1/ws/messages/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     start_time = datetime.utcnow()
     current_user: Optional[UserInDB] = None
@@ -1041,7 +1042,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 await websocket.close(code=1008, reason="Token mismatch")
                 return
         else:
-            # Fallback to client-sent auth message (timeout 5s)
+            # Fallback to client-sent auth message
             try:
                 auth_msg_task = asyncio.create_task(websocket.receive_text())
                 done, _ = await asyncio.wait({auth_msg_task}, timeout=5.0)
@@ -1089,12 +1090,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             if not receiver_id or not content:
                 await ws_manager.send_personal_message(json.dumps({"error": "Missing fields"}), user_id)
                 continue
-            if not isinstance(receiver_id, str) or len(receiver_id) > 100:
-                await ws_manager.send_personal_message(json.dumps({"error": "Invalid receiver_id"}), user_id)
-                continue
-            if not isinstance(content, str) or len(content) > int(os.getenv("WS_MAX_CONTENT_LENGTH", "2000")):
-                await ws_manager.send_personal_message(json.dumps({"error": "Content too long"}), user_id)
-                continue
 
             msg_doc = MessageDB(sender_id=user_id, receiver_id=receiver_id, content=content)
             await MESSAGES_COL.insert_one(msg_doc.model_dump(by_alias=True))
@@ -1105,6 +1100,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "timestamp": str(datetime.utcnow())
             })
             await ws_manager.send_personal_message(out_msg, receiver_id)
+            # Echo to sender
+            await websocket.send_text(out_msg)
+
     except WebSocketDisconnect:
         ws_manager.disconnect(user_id)
         if current_user:
