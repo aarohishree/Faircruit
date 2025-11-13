@@ -1,0 +1,116 @@
+====================================================================================================
+                              ADMIN EVALUATION REPORT
+====================================================================================================
+
+CANDIDATE INFORMATION
+----------------------------------------------------------------------------------------------------
+Candidate Name:      aarohi
+Position Applied:    AI Engineer
+Assessment Date:     November 11, 2025 at 08:57 PM
+Report ID:           RPT-20251111205748
+
+OVERALL SCORE SUMMARY
+----------------------------------------------------------------------------------------------------
+Total Score:         7/100
+  - Exam Score:      0/85
+  - CV Score:        7/15
+
+Hiring Recommendation:  [-] NOT RECOMMENDED
+
+
+COMPETENCY SCORE BREAKDOWN
+====================================================================================================
+
+Competency: Technical Problem-Solving
+----------------------------------------------------------------------------------------------------
+Score:       0/30 (0.0%)
+Level:       [A] Awareness
+
+Rubric-Based Assessment:
+  The candidate did not provide answers to any questions related to Technical Problem-Solving,
+  indicating a lack of demonstrated understanding or application of core ML concepts, model
+  building, or system design. All MCQ answers for this competency were incorrect.
+
+Areas for Improvement:
+  1. Fundamental understanding of ML basics and algorithms
+  2. Ability to apply ML/DL models and evaluate them
+  3. Skills in designing scalable ML systems for production
+
+
+Competency: Coding Quality and Collaboration
+----------------------------------------------------------------------------------------------------
+Score:       0/30 (0.0%)
+Level:       [A] Awareness
+
+Rubric-Based Assessment:
+  The candidate did not provide answers to any questions related to Coding Quality and
+  Collaboration, indicating a lack of demonstrated awareness of documentation importance, bias
+  sources, or practical skills in data preprocessing and ethical AI considerations. All MCQ
+  answers for this competency were incorrect.
+
+Areas for Improvement:
+  1. Understanding of clear documentation and its importance in team settings
+  2. Awareness of bias in ML models and ethical considerations
+  3. Ability to structure code for reproducibility and collaboration
+
+
+Competency: Continuous Learning and Adaptability
+----------------------------------------------------------------------------------------------------
+Score:       0/25 (0.0%)
+Level:       [A] Awareness
+
+Rubric-Based Assessment:
+  The candidate did not provide answers to any questions related to Continuous Learning and
+  Adaptability, indicating a lack of demonstrated curiosity for emerging AI trends, ability to
+  evaluate new technologies, or strategic thinking for fostering innovation. The MCQ answer for
+  this competency was incorrect.
+
+Areas for Improvement:
+  1. Proactive learning and staying updated on AI advancements
+  2. Ability to evaluate and integrate new AI libraries/architectures
+  3. Strategic thinking for AI roadmap and innovation culture
+
+
+CV EVALUATION
+====================================================================================================
+
+CV Match Score:      7/15
+Overall Fit:         Not recommended
+
+CV Strengths:
+  1. Foundational understanding of ML basics and concepts (from coursework)
+     2. Familiarity with standard ML/DL frameworks (PyTorch/TensorFlow/Scikit-learn) for basic
+     tasks
+  3. Demonstrates curiosity for emerging AI trends and willingness to learn
+
+Identified Gaps:
+     1. Severe lack of practical technical expertise and problem-solving skills, as evidenced by
+     0/85 on the technical exam
+     2. Limited experience in designing, deploying, and managing scalable AI systems in
+     production environments
+  3. Insufficient evidence of robust data handling, experimentation, and MLOps practices
+  4. Lack of experience in applying ethical AI principles beyond theoretical awareness
+
+
+OVERALL FEEDBACK & RECOMMENDATION
+====================================================================================================
+
+The candidate did not provide any substantive answers to the descriptive, coding, or
+scenario-based questions, and all multiple-choice questions were answered incorrectly. This
+indicates a significant gap in the required competencies for an AI Engineer role, across technical
+expertise, data handling, AI product deployment, and AI ethics/collaboration. There is no
+demonstrated understanding or application of fundamental AI/ML concepts, practical coding skills,
+or strategic thinking. Substantial development is needed in all areas.
+
+
+COMPETENCY LEVEL GUIDE
+----------------------------------------------------------------------------------------------------
+[A]  Awareness    (0-25%):   Basic understanding of concepts
+[Ap] Application  (26-50%):  Can apply knowledge in practical situations
+[M]  Mastery      (51-75%):  Demonstrates expertise and advanced skills
+[I]  Influence    (76-100%): Leads, mentors, and influences others
+
+====================================================================================================
+                         AI-Powered Competency Assessment System
+                              Generated: November 11, 2025 at 08:57 PM
+====================================================================================================
