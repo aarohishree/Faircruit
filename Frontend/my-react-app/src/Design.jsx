@@ -257,7 +257,7 @@ const LoginForm = () => {
 
   const { mutate: loginMutate, isPending } = useMutation({
     mutationFn: async ({ email, password }) => {
-      const res = await authAxios.post('/api/v1/auth/login', { email, password });
+      const res = await authAxios.post('/auth/login', { email, password });
       return res.data;
     },
     onSuccess: (data) => {
@@ -376,11 +376,11 @@ const TestFlow = () => {
   const fetchQuestions = useCallback(async () => {
     setIsLoading(true);
     try {
-      const appRes = await authAxios.get('/api/v1/applicant/applications');
+      const appRes = await authAxios.get('/applicant/applications');
       const app = appRes.data.items.find(a => a.id === applicationId);
       if (!app) throw new Error("Application not found");
 
-      const qRes = await authAxios.post('/api/v1/ml/generate-questions', {
+      const qRes = await authAxios.post('/ml/generate-questions', {
         job_id: app.job_id
       });
 
@@ -522,7 +522,7 @@ const ApplyPage = () => {
   useEffect(() => {
     const apply = async () => {
       try {
-        const res = await authAxios.post('/api/v1/applicant/apply', { job_id: jobId });
+        const res = await authAxios.post('/applicant/apply', { job_id: jobId });
         setApplicationId(res.data.id);
         addToast('Application created! Upload CV & start test.', 'success');
       } catch {

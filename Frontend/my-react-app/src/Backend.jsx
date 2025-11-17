@@ -279,7 +279,7 @@ export const useFileUpload = () => {
     controllerRef.current = new AbortController();
 
     try {
-      await authAxios.post('/api/v1/applicant/upload', form, {
+      await authAxios.post('/applicant/upload', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: e => setProgress(Math.round((e.loaded * 100) / e.total)),
         signal: controllerRef.current.signal,
@@ -305,7 +305,7 @@ export const useJobs = () => {
   return useQuery({
     queryKey: ['jobs'],
     queryFn: async () => {
-      const response = await authAxios.get('/api/v1/jobs');
+      const response = await authAxios.get('/jobs');
       return response.data.items || [];
     },
     staleTime: 5 * 60 * 1000,
@@ -316,7 +316,7 @@ export const useRecruiterJobs = () => {
   const { authAxios } = useAuth();
   return useQuery({
     queryKey: ['recruiter_jobs'],
-    queryFn: async () => (await authAxios.get('/api/v1/recruiter/jobs')).data,
+    queryFn: async () => (await authAxios.get('/recruiter/jobs')).data,
   });
 };
 
@@ -324,7 +324,7 @@ export const useCreateJob = () => {
   const { authAxios } = useAuth();
   const toast = useToast();
   return useMutation({
-    mutationFn: (data) => authAxios.post('/api/v1/recruiter/jobs', data),
+    mutationFn: (data) => authAxios.post('/recruiter/jobs', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recruiter_jobs'] });
       toast('Job created', 'success');
@@ -336,7 +336,7 @@ export const useUpdateJob = () => {
   const { authAxios } = useAuth();
   const toast = useToast();
   return useMutation({
-    mutationFn: ({ id, ...data }) => authAxios.put(`/api/v1/recruiter/jobs/${id}`, data),
+    mutationFn: ({ id, ...data }) => authAxios.put(`/recruiter/jobs/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recruiter_jobs'] });
       toast('Job updated', 'success');
@@ -348,7 +348,7 @@ export const useDeleteJob = () => {
   const { authAxios } = useAuth();
   const toast = useToast();
   return useMutation({
-    mutationFn: (id) => authAxios.delete(`/api/v1/recruiter/jobs/${id}`),
+    mutationFn: (id) => authAxios.delete(`/recruiter/jobs/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recruiter_jobs'] });
       toast('Job deleted', 'success');
@@ -372,7 +372,7 @@ export const useSubmitTest = (applicationId) => {
           }
         }
       };
-      return authAxios.post(`/api/v1/applicant/tests/${applicationId}`, submission);
+      return authAxios.post(`/applicant/tests/${applicationId}`, submission);
     },
     onSuccess: () => queryClient.invalidateQueries(['results'])
   });
@@ -384,7 +384,7 @@ export const useApplicantResults = () => {
   return useQuery({
     queryKey: ['applications'],
     queryFn: async () => {
-      const res = await authAxios.get('/api/v1/applicant/applications');
+      const res = await authAxios.get('/applicant/applications');
       return res.data.items.map(app => ({
         ...app,
         job_title: app.job_title || 'Unknown Job',
@@ -398,7 +398,7 @@ export const usePublishGemini = () => {
   const { authAxios } = useAuth();
   const toast = useToast();
   return useMutation({
-    mutationFn: (applicationId) => authAxios.post(`/api/v1/recruiter/applications/${applicationId}/publish-gemini`),
+    mutationFn: (applicationId) => authAxios.post(`/recruiter/applications/${applicationId}/publish-gemini`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['applicants'] });
       toast('Published via Gemini', 'success');
@@ -412,7 +412,7 @@ export const useMessageHistory = (otherUserId) => {
   return useQuery({
     queryKey: ['messages', otherUserId],
     queryFn: async () => {
-      const res = await authAxios.get(`/api/v1/messages/${otherUserId}`);
+      const res = await authAxios.get(`/messages/${otherUserId}`);
       return res.data.items.map(m => ({
         id: m._id,
         sender_id: m.sender_id,
