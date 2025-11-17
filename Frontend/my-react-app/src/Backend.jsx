@@ -30,74 +30,20 @@ export const authAxios = axios.create({
 /* ──────────────────────── AUTH CONTEXT ──────────────────────── */
 const AuthContext = createContext();
 export const useAuth = () => {
-  const [user, setUser] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const addToast = useToast();
-
-  // REACTIVE AXIOS
-  const authAxios = useMemo(() => {
-    const instance = axios.create({
-      baseURL: '/api/v1',
-    });
-
-    instance.interceptors.request.use(config => {
-      const token = localStorage.getItem('token');
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-      return config;
-    });
-
-    instance.interceptors.response.use(
-      res => res,
-      err => {
-        if (err.response?.status === 401) {
-          logout();
-          try { window.location.href = '/login'; } catch (e) {}
-          addToast('Session expired. Please login again.', 'error');
-        }
-        return Promise.reject(err);
-      }
-    );
-
-    return instance;
-  }, [navigate, addToast]);
-
-  const login = (token, userData) => {
-    localStorage.setItem('token', token);
-    setUser(userData);
-    setIsLoggedIn(true);
-  };
-
-  const logout = () => {
-    localStorage.removeItem('token');
-    setUser(null);
-    setIsLoggedIn(false);
-    try { window.location.href = '/login'; } catch (e) {}
-  };
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Validate token
-      authAxios.get('/api/v1/auth/me')
-        .then(res => {
-          setUser(res.data);
-          setIsLoggedIn(true);
-        })
-        .catch(() => {
-          localStorage.removeItem('token');
-        });
-    }
-  }, [authAxios]);
-
-  return { user, isLoggedIn, login, logout, authAxios };
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
 };
-export const AuthProvider = ({ children, navigate, addToast }) => {
+export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('authToken'));
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('user');
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Sync token to localStorage and axios headers
   useEffect(() => {
     if (token) {
       localStorage.setItem('authToken', token);
@@ -108,27 +54,60 @@ export const AuthProvider = ({ children, navigate, addToast }) => {
     }
   }, [token]);
 
+  // Sync user to localStorage
   useEffect(() => {
-    if (user) localStorage.setItem('user', JSON.stringify(user));
-    else localStorage.removeItem('user');
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
   }, [user]);
 
-  const login = (jwt, data) => {
+  // Create authAxios with error handling
+  const contextAuthAxios = useMemo(() => {
+    const instance = axios.create({
+      baseURL: import.meta.env.VITE_API_BASE || 'http://localhost:8000',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    instance.interceptors.request.use(config => {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    }, error => Promise.reject(error));
+
+    instance.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) {
+          setToken(null);
+          setUser(null);
+          localStorage.clear();
+          try { window.location.href = '/login'; } catch (e) {}
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return instance;
+  }, [token]);
+
+  const login = useCallback((jwt, data) => {
     setToken(jwt);
     setUser(data);
-  };
+  }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     try {
-      authAxios.post('/api/v1/auth/logout');
+      await contextAuthAxios.post('/auth/logout');
     } catch (_) {}
     setToken(null);
     setUser(null);
     localStorage.clear();
     queryClient.clear();
-    navigate?.('/');
-    addToast?.('Successfully logged out', 'success');
-  }, [navigate, addToast]);
+    try { window.location.href = '/'; } catch (e) {}
+  }, [contextAuthAxios]);
 
   const isLoggedIn = !!token && !!user;
   const isAdmin = isLoggedIn && user?.role === 'admin';
@@ -137,7 +116,15 @@ export const AuthProvider = ({ children, navigate, addToast }) => {
 
   return (
     <AuthContext.Provider value={{
-      token, user, login, logout, isLoggedIn, isAdmin, isRecruiter, isApplicant, authAxios
+      token,
+      user,
+      login,
+      logout,
+      isLoggedIn,
+      isAdmin,
+      isRecruiter,
+      isApplicant,
+      authAxios: contextAuthAxios,
     }}>
       {children}
     </AuthContext.Provider>
