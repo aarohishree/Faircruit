@@ -578,8 +578,110 @@ const ResultsPage = () => {
 // APPLICANT DASHBOARD
 const ApplicantDashboard = () => {
   const [tab, setTab] = useState('home');
-  const { data: jobs } = useJobs();
+  const { data: jobs, isLoading: jobsLoading } = useJobs();
+  const { data: applications, isLoading: appsLoading } = useApplicantResults();
+  const { upload: uploadCV, uploading, progress } = useFileUpload();
+  const submitTestMutation = useSubmitTest();
   const navigate = useNavigate();
+  const { user, authAxios } = useAuth();
+  const { showToast } = useToast();
+
+  // States for CV upload section
+  const [showCVUpload, setShowCVUpload] = useState(false);
+  const [cvFile, setCVFile] = useState(null);
+
+  // States for test taking
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [testInProgress, setTestInProgress] = useState(false);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+
+  // Handle CV file selection and upload
+  const handleCVUpload = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setCVFile(file);
+      await uploadCV(file);
+      setShowCVUpload(false);
+      showToast('CV uploaded successfully!', 'success');
+    }
+  };
+
+  // Generate test questions for selected job
+  const startTest = async (jobId) => {
+    setLoadingQuestions(true);
+    try {
+      const res = await authAxios.post('/ml/generate-questions', { job_id: jobId });
+      setQuestions(res.data.questions || []);
+      setSelectedJob(jobId);
+      setTestInProgress(true);
+      setCurrentQuestionIndex(0);
+      setAnswers({});
+      showToast('Test questions loaded! Answer all 4 levels.', 'info');
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Failed to load test questions', 'error');
+    } finally {
+      setLoadingQuestions(false);
+    }
+  };
+
+  // Handle answer input for current question
+  const handleAnswerChange = (value) => {
+    setAnswers(prev => ({
+      ...prev,
+      [currentQuestionIndex]: value
+    }));
+  };
+
+  // Move to next question
+  const goToNextQuestion = () => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+    }
+  };
+
+  // Submit test answers
+  const submitTest = async () => {
+    if (Object.keys(answers).length !== questions.length) {
+      showToast('Please answer all questions before submitting', 'error');
+      return;
+    }
+
+    try {
+      const testData = {
+        answers: questions.map((q, idx) => ({
+          level: q.level,
+          type: q.type,
+          question: q.question,
+          answer: answers[idx],
+          time_limit: q.time_limit_seconds
+        }))
+      };
+
+      // Create application first if needed
+      const appRes = await authAxios.post('/applicant/apply', {
+        job_id: selectedJob,
+        cv_file_path: 'uploaded',
+        test_attempt: 1
+      });
+
+      const applicationId = appRes.data.id;
+
+      // Submit test answers
+      await authAxios.post(`/applicant/tests/${applicationId}`, testData);
+
+      showToast('Test submitted! Waiting for Gemini evaluation...', 'success');
+      setTestInProgress(false);
+      setTab('results');
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Failed to submit test', 'error');
+    }
+  };
+
+  const currentQuestion = questions[currentQuestionIndex];
+  const progressPercent = ((currentQuestionIndex + 1) / questions.length) * 100;
 
   return (
     <div className="dashboard">
@@ -591,19 +693,195 @@ const ApplicantDashboard = () => {
         ))}
       </aside>
       <main className="main-content">
+        {/* TAB: HOME - Available Jobs & CV Upload */}
         {tab === 'home' && (
           <div className="card">
-            <h3>Available Jobs</h3>
-            <div className="grid">
-              {jobs?.map(job => (
-                <div key={job.id} className="job-card">
-                  <h4>{job.title}</h4>
-                  <button className="btn" onClick={() => navigate(`/dashboard/applicant/apply/${job.id}`)}>
-                    Start Test
-                  </button>
+            <h3>Welcome, {user?.username}!</h3>
+            
+            {/* CV Upload Section */}
+            <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+              <h4>Step 1: Upload Your CV</h4>
+              {!showCVUpload ? (
+                <button className="btn" onClick={() => setShowCVUpload(true)}>
+                  {uploading ? `Uploading... ${progress}%` : 'Upload CV'}
+                </button>
+              ) : (
+                <div>
+                  <input 
+                    type="file" 
+                    accept=".pdf,.doc,.docx,.txt" 
+                    onChange={handleCVUpload}
+                    disabled={uploading}
+                  />
+                  {uploading && <div style={{ marginTop: '10px' }}>Upload Progress: {progress}%</div>}
                 </div>
-              ))}
+              )}
             </div>
+
+            {/* Available Jobs Section */}
+            <h4>Step 2: Select a Job and Take the Test</h4>
+            {jobsLoading ? (
+              <p>Loading jobs...</p>
+            ) : jobs && jobs.length > 0 ? (
+              <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                {jobs.map(job => (
+                  <div key={job._id} className="job-card" style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
+                    <h4>{job.title}</h4>
+                    <p style={{ color: '#666', fontSize: '14px' }}>{job.description?.substring(0, 100)}...</p>
+                    {job.competencies && (
+                      <div style={{ marginBottom: '10px' }}>
+                        <strong>Competencies:</strong>
+                        <ul style={{ fontSize: '12px', margin: '5px 0' }}>
+                          {job.competencies.map((comp, idx) => <li key={idx}>{comp}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    <button 
+                      className="btn" 
+                      onClick={() => startTest(job._id)}
+                      disabled={loadingQuestions}
+                    >
+                      {loadingQuestions ? 'Loading Test...' : 'Start Test'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p>No jobs available at the moment.</p>
+            )}
+          </div>
+        )}
+
+        {/* TAB: TESTS - In-Progress Test Taking */}
+        {tab === 'tests' && (
+          <div className="card">
+            {!testInProgress ? (
+              <div style={{ textAlign: 'center' }}>
+                <h3>No Active Test</h3>
+                <p>Click "Home" to select a job and start a test.</p>
+              </div>
+            ) : currentQuestion ? (
+              <div>
+                <h3>Competency Assessment Test</h3>
+                <div style={{ marginBottom: '20px', textAlign: 'right' }}>
+                  Question {currentQuestionIndex + 1} of {questions.length}
+                </div>
+
+                {/* Progress Bar */}
+                <div style={{ width: '100%', height: '8px', backgroundColor: '#eee', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
+                  <div style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.3s' }}></div>
+                </div>
+
+                {/* Question Display */}
+                <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px', borderLeft: '4px solid #2196F3' }}>
+                  <h4>Level {currentQuestion.level}: {currentQuestion.type.toUpperCase()}</h4>
+                  <p style={{ fontSize: '16px', margin: '15px 0' }}>{currentQuestion.question}</p>
+
+                  {/* Answer Input */}
+                  {currentQuestion.type === 'mcq' ? (
+                    <div style={{ marginTop: '15px' }}>
+                      {currentQuestion.options?.map((opt, idx) => (
+                        <label key={idx} style={{ display: 'block', marginBottom: '10px', cursor: 'pointer' }}>
+                          <input
+                            type="radio"
+                            name="answer"
+                            value={idx}
+                            checked={answers[currentQuestionIndex] == idx}
+                            onChange={(e) => handleAnswerChange(e.target.value)}
+                            style={{ marginRight: '10px' }}
+                          />
+                          {opt}
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <textarea
+                      placeholder={`Your answer for Level ${currentQuestion.level}...`}
+                      value={answers[currentQuestionIndex] || ''}
+                      onChange={(e) => handleAnswerChange(e.target.value)}
+                      style={{ width: '100%', minHeight: '120px', padding: '10px', marginTop: '10px', borderRadius: '4px', border: '1px solid #ddd', fontFamily: 'monospace' }}
+                    />
+                  )}
+
+                  {/* Time Limit Info */}
+                  <p style={{ fontSize: '12px', color: '#999', marginTop: '15px' }}>
+                    Time limit: {currentQuestion.time_limit_seconds} seconds
+                  </p>
+                </div>
+
+                {/* Navigation Buttons */}
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', marginTop: '20px' }}>
+                  <button 
+                    className="btn"
+                    onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
+                    disabled={currentQuestionIndex === 0}
+                  >
+                    Previous
+                  </button>
+
+                  {currentQuestionIndex < questions.length - 1 ? (
+                    <button 
+                      className="btn"
+                      onClick={goToNextQuestion}
+                      disabled={!answers[currentQuestionIndex]}
+                    >
+                      Next
+                    </button>
+                  ) : (
+                    <button 
+                      className="btn btn-success"
+                      onClick={submitTest}
+                      disabled={Object.keys(answers).length !== questions.length}
+                    >
+                      Submit Test
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p>Loading test...</p>
+            )}
+          </div>
+        )}
+
+        {/* TAB: RESULTS - View Test Results & Gemini Evaluation */}
+        {tab === 'results' && (
+          <div className="card">
+            <h3>Your Test Results</h3>
+            {appsLoading ? (
+              <p>Loading results...</p>
+            ) : applications && applications.length > 0 ? (
+              <div style={{ display: 'grid', gap: '20px' }}>
+                {applications.map(app => (
+                  <div key={app._id} style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#fafafa' }}>
+                    <h4>{app.job_title}</h4>
+                    <p><strong>Status:</strong> {app.status}</p>
+                    {app.outcome && <p><strong>Outcome:</strong> {app.outcome}</p>}
+                    {app.ml_report_id && (
+                      <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
+                        <p><strong>Evaluation Available:</strong> Gemini has reviewed your CV and test answers</p>
+                        <button className="btn" onClick={() => navigate(`/results/${app._id}`)}>
+                          View Full Report
+                        </button>
+                      </div>
+                    )}
+                    {!app.ml_report_id && app.status !== 'evaluated' && (
+                      <p style={{ color: '#f57c00' }}>⏳ Gemini is evaluating your submission...</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p>No test results yet. Complete a test to see results here.</p>
+            )}
+          </div>
+        )}
+
+        {/* TAB: MESSAGES */}
+        {tab === 'messages' && (
+          <div className="card">
+            <h3>Messages</h3>
+            <p>Message feature coming soon...</p>
           </div>
         )}
       </main>
