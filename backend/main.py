@@ -970,7 +970,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         ws_manager.disconnect(user_id)
 
 # --- General Endpoints ---
-@app.get("/jobs", response_model=PaginatedResponse)
+general_router = APIRouter()
+
+@general_router.get("/jobs", response_model=PaginatedResponse)
 async def get_all_jobs(page: int = 1, size: int = 50, request: Request = None):
     start_time = datetime.utcnow()
     try:
@@ -1009,6 +1011,7 @@ app.include_router(admin_router, prefix=settings.API_V1_STR)
 app.include_router(messaging_router, prefix=settings.API_V1_STR)
 app.include_router(feedback_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix=settings.API_V1_STR)
+app.include_router(general_router, prefix=settings.API_V1_STR)
 app.include_router(ml_router.router)
 
 # --- Run ---
