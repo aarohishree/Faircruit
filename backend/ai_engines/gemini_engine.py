@@ -359,3 +359,99 @@ class GeminiEngine:
                 "confidence": 0.3,
                 "feedback": "Unable to analyze transcript"
             }
+    def generate_assessment_questions(self, job_title: str, job_description: str, competencies: List[Dict]) -> Dict:
+        """
+        Generate 4 dynamic assessment questions using Gemini
+        One for each level: Awareness → Application → Mastery → Influence
+
+        Args:
+            job_title: Job title
+            job_description: Full job description
+            competencies: List of competency dicts with 'level', 'description', 'keywords'
+
+        Returns:
+            JSON with 4 questions
+        """
+        competencies_text = "\n".join([
+            f"- {c.get('level', '')}: {c.get('description', '')} (Keywords: {', '.join(c.get('keywords', []))})"
+            for c in competencies
+        ])
+
+        prompt = f"""
+You are an expert hiring assessment designer.
+
+Job Title: {job_title}
+Job Description: {job_description}
+
+Required Competencies:
+{competencies_text}
+
+Generate EXACTLY 4 assessment questions — one for each level:
+
+1. **Awareness**: MCQ testing basic knowledge recall
+   - 4 options, 1 correct
+   - Include correct_index
+
+2. **Application**: Practical coding or task-based question
+   - Short, clear instructions
+
+3. **Mastery**: Essay on advanced optimization or design
+
+4. **Influence**: Video response on leadership, teaching, or impact
+
+Return ONLY valid JSON:
+{{
+  "questions": [
+    {{
+      "level": 1,
+      "type": "mcq",
+      "question": "Your question here?",
+      "options": ["A", "B", "C", "D"],
+      "correct_index": 2,
+      "time_limit_seconds": 180
+    }},
+    {{
+      "level": 2,
+      "type": "code",
+      "question": "Write a function to...",
+      "time_limit_seconds": 600
+    }},
+    {{
+      "level": 3,
+      "type": "essay",
+      "question": "Explain how you would...",
+      "time_limit_seconds": 900
+    }},
+    {{
+      "level": 4,
+      "type": "video",
+      "question": "Record a 2-minute video explaining...",
+      "time_limit_seconds": 120
+    }}
+  ]
+}}
+"""
+
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={
+                    "response_mime_type": "application/json"
+                }
+            )
+            result = response.text.strip()
+            # Clean up code blocks
+            result = result.replace("```json", "").replace("```", "").strip()
+            return json.loads(result)
+        except Exception as e:
+            print(f"Error generating questions: {e}")
+            # Fallback: return minimal valid structure
+            return {
+                "questions": [
+                    {"level": 1, "type": "mcq", "question": "Fallback MCQ", "options": ["A", "B", "C", "D"], "correct_index": 0, "time_limit_seconds": 180},
+                    {"level": 2, "type": "code", "question": "Fallback code task", "time_limit_seconds": 600},
+                    {"level": 3, "type": "essay", "question": "Fallback essay", "time_limit_seconds": 900},
+                    {"level": 4, "type": "video", "question": "Fallback video", "time_limit_seconds": 120}
+                ]
+            }
+    

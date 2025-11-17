@@ -23,7 +23,46 @@ import re
 import asyncio
 from bson import ObjectId
 import sys
-# --- ML Module Import Setup ---
+from contextlib import asynccontextmanager
+from auth import get_current_user
+from database import (
+    connect_to_mongo,
+    close_mongo_connection,
+    get_users_collection,
+    get_jobs_collection,
+    get_applications_collection,
+    get_reports_collection,
+    get_messages_collection,
+    get_audit_logs_collection,
+    get_feedback_collection,
+    get_error_logs_collection,
+)
+from utils import safe_object_id
+# backend/main.py
+from models.schemas import (
+    UserInDB,
+    UserCreate,
+    LoginCredentials,
+    UserOut,
+    JobCreate,
+    JobDB,
+    ApplicationCreate,
+    ApplicationDB,
+    ReportBase,
+    FeedbackBase,
+    FeedbackDB,
+    MessageBase,
+    MessageDB,
+    PaginatedResponse,
+    ErrorLogEntry,
+    AuditLogEntry,
+    TestSubmission
+)
+from utils import decode_token
+from config import settings
+
+
+# --- ML Module Import Setup ---\
 ML_DIR = os.path.dirname(__file__)
 sys.path.insert(0, ML_DIR)
 
@@ -48,34 +87,6 @@ limiter = Limiter(key_func=get_remote_address_with_proxy)
 
 # Load environment from .env early
 load_dotenv()
-
-# --- Settings ---
-class Settings(BaseModel):
-    PROJECT_NAME: str = "Faircruit"
-    API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = os.environ.get("SECRET_KEY")
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    MONGO_URI: str = os.environ.get("MONGO_URI")
-    DB_NAME: str = "faircruit_db"
-    GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY")
-    ML_SERVICE_BASE_URL: str = os.environ.get("ML_SERVICE_BASE_URL", "")
-    ML_API_KEY: str = os.environ.get("ML_API_KEY", "")
-    BACKEND_CORS_ORIGINS: list[str] = [o for o in os.environ.get("BACKEND_CORS_ORIGINS", "").split(",") if o]
-    model_config = ConfigDict(case_sensitive=True)
-
-settings = Settings()
-
-if not settings.SECRET_KEY:
-    logger.warning("SECRET_KEY not set. Set in .env for production.")
-if not settings.ML_SERVICE_BASE_URL:
-    logger.warning("ML_SERVICE_BASE_URL not set. Set in .env for ML integration.")
-
-JWT_PRIVATE_KEY = os.environ.get("JWT_PRIVATE_KEY")
-JWT_PUBLIC_KEY = os.environ.get("JWT_PUBLIC_KEY")
-if JWT_PRIVATE_KEY and JWT_PUBLIC_KEY:
-    settings.ALGORITHM = "RS256"
-    logger.info("Using RS256 for JWTs.")
 
 # --- Helpers ---
 def redact_sensitive(data: str) -> str:
@@ -108,19 +119,9 @@ def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    if settings.ALGORITHM == "RS256" and JWT_PRIVATE_KEY:
-        return jwt.encode(to_encode, JWT_PRIVATE_KEY, algorithm="RS256")
+    if settings.ALGORITHM == "RS256" and settings.JWT_PRIVATE_KEY:
+        return jwt.encode(to_encode, settings.JWT_PRIVATE_KEY, algorithm="RS256")
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-
-def decode_token(token: str) -> dict:
-    try:
-        if settings.ALGORITHM == "RS256" and JWT_PUBLIC_KEY:
-            payload = jwt.decode(token, JWT_PUBLIC_KEY, algorithms=["RS256"])
-        else:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 # --- Pydantic Models ---
 def validate_object_id(v: Any) -> ObjectId:
@@ -131,7 +132,6 @@ def validate_object_id(v: Any) -> ObjectId:
     raise ValueError("Invalid ObjectId format")
 
 PyObjectId = Annotated[ObjectId, BeforeValidator(validate_object_id)]
-
 class MongoBase(BaseModel):
     id: PyObjectId = Field(default_factory=ObjectId, alias="_id")
     model_config = ConfigDict(
@@ -146,167 +146,6 @@ class UserBase(BaseModel):
     username: str
     company_id: Optional[str] = None
 
-class UserCreate(UserBase):
-    password: str
-    role: str = "applicant"
-
-class LoginCredentials(BaseModel):
-    email: EmailStr
-    password: str
-
-class UserInDB(UserBase, MongoBase):
-    hashed_password: str
-    role: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class UserOut(UserBase):
-    id: str
-    role: str
-    created_at: datetime
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-class JobRubric(BaseModel):
-    level: str
-    description: str
-    evidence_type: str
-
-class JobCreate(BaseModel):
-    title: str
-    description: str
-    competencies: List[JobRubric] = Field(default_factory=list)
-    evidence_types: List[str]
-    duration_minutes: int
-    criteria: str
-    company_id: Optional[str] = None
-
-class JobDB(JobCreate, MongoBase):
-    poster_id: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class ApplicationEvidence(BaseModel):
-    cv_url: Optional[str] = None
-    video_url: Optional[str] = None
-    tests_data: Optional[dict] = None
-
-class ApplicationCreate(BaseModel):
-    job_id: str
-    evidence_bundle: ApplicationEvidence = Field(default_factory=ApplicationEvidence)
-    company_id: Optional[str] = None
-
-class ApplicationDB(ApplicationCreate, MongoBase):
-    applicant_id: str
-    status: str = "pending"
-    ml_report_id: Optional[str] = None
-    outcome: Optional[str] = None
-    feedback_from_recruiter: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class ReportBase(MongoBase):
-    application_id: str
-    profile: dict
-    narrative: str
-    visuals_urls: List[str]
-    feedback: Optional[str] = None
-
-class AuditLogEntry(MongoBase):
-    user_id: str
-    action: str
-    resource: str
-    details: Dict[str, Any] = Field(default_factory=dict)
-    session_id: Optional[str] = None
-    ip_address: Optional[str] = None
-    device_type: Optional[str] = None
-    duration: Optional[float] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class FeedbackBase(BaseModel):
-    user_id: str
-    application_id: Optional[str] = None
-    rating: int = Field(ge=1, le=5)
-    comment: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class FeedbackDB(FeedbackBase, MongoBase):
-    pass
-
-class ErrorLogEntry(MongoBase):
-    user_id: Optional[str] = None
-    error_type: str
-    message: str
-    stack_trace: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class MessageBase(BaseModel):
-    receiver_id: str
-    content: str
-
-class MessageDB(MessageBase, MongoBase):
-    sender_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-class PaginatedResponse(BaseModel):
-    items: List[Any]
-    total: int
-    page: int
-    size: int
-
-class TestSubmission(BaseModel):
-    answers: Dict[str, Any]
-    completed_at: datetime = Field(default_factory=datetime.utcnow)
-
-# --- Database Setup ---
-class MongoDB:
-    client: Optional[Any] = None
-    database: Optional[Any] = None
-
-db_client = MongoDB()
-USERS_COL = None
-JOBS_COL = None
-APPLICATIONS_COL = None
-REPORTS_COL = None
-MESSAGES_COL = None
-AUDIT_LOGS_COL = None
-FEEDBACK_COL = None
-ERROR_LOGS_COL = None
-
-async def connect_to_mongo():
-    global USERS_COL, JOBS_COL, APPLICATIONS_COL, REPORTS_COL, MESSAGES_COL, AUDIT_LOGS_COL, FEEDBACK_COL, ERROR_LOGS_COL
-    from motor.motor_asyncio import AsyncIOMotorClient
-    try:
-        db_client.client = AsyncIOMotorClient(settings.MONGO_URI, serverSelectionTimeoutMS=5000)
-        await db_client.client.admin.command('ping')
-        db_client.database = db_client.client[settings.DB_NAME]
-        logger.info("Successfully connected to MongoDB.")
-
-        USERS_COL = db_client.database["users"]
-        JOBS_COL = db_client.database["jobs"]
-        APPLICATIONS_COL = db_client.database["applications"]
-        REPORTS_COL = db_client.database["reports"]
-        MESSAGES_COL = db_client.database["messages"]
-        AUDIT_LOGS_COL = db_client.database["audit_logs"]
-        FEEDBACK_COL = db_client.database["feedback"]
-        ERROR_LOGS_COL = db_client.database["error_logs"]
-
-        # Create indexes only if they do not already exist
-        await USERS_COL.create_index("email", unique=True)
-        await JOBS_COL.create_index([("poster_id", 1), ("company_id", 1)])
-        await APPLICATIONS_COL.create_index([("applicant_id", 1), ("job_id", 1), ("company_id", 1)])
-        await AUDIT_LOGS_COL.create_index("timestamp")
-        await FEEDBACK_COL.create_index([("user_id", 1), ("application_id", 1)])
-        await ERROR_LOGS_COL.create_index("timestamp")
-    except Exception as e:
-        logger.error(f"Could not connect to MongoDB during startup: {e}")
-        db_client.client = None
-        db_client.database = None
-        USERS_COL = JOBS_COL = APPLICATIONS_COL = REPORTS_COL = MESSAGES_COL = AUDIT_LOGS_COL = FEEDBACK_COL = ERROR_LOGS_COL = None
-
-async def close_mongo_connection():
-    if db_client.client:
-        db_client.client.close()
-        logger.info("MongoDB connection closed.")
 
 # --- Authentication ---
 APPLICANT = "applicant"
@@ -321,7 +160,7 @@ async def get_authenticated_user_from_token(token: str) -> UserInDB:
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload: missing 'sub'")
     oid = safe_object_id(user_id, "user_id")
-    user_doc = await USERS_COL.find_one({"_id": oid})
+    user_doc = await get_users_collection().find_one({"_id": oid})
     if not user_doc:
         raise HTTPException(status_code=401, detail="User not found")
     return UserInDB(**user_doc)
@@ -361,18 +200,18 @@ async def log_event(user_id: str, action: str, resource: str, details: Optional[
         device_type=device_type,
         duration=duration
     )
-    if AUDIT_LOGS_COL is not None:
+    if get_audit_logs_collection() is not None:
         try:
-            await AUDIT_LOGS_COL.insert_one(log_data.model_dump(by_alias=True))
+            await get_audit_logs_collection().insert_one(log_data.model_dump(by_alias=True))
         except Exception as e:
             logger.warning(f"Failed to write audit log to DB: {e}")
     logger.info(f"AUDIT: User {user_id} performed {action} on {resource}.")
 
 async def log_error(user_id: Optional[str], error_type: str, message: str, stack_trace: Optional[str] = None):
     error_data = ErrorLogEntry(user_id=user_id, error_type=error_type, message=message, stack_trace=stack_trace)
-    if ERROR_LOGS_COL is not None:
+    if get_error_logs_collection() is not None:
         try:
-            await ERROR_LOGS_COL.insert_one(error_data.model_dump(by_alias=True))
+            await get_error_logs_collection().insert_one(error_data.model_dump(by_alias=True))
         except Exception as e:
             logger.warning(f"Failed to write error log to DB: {e}")
     logger.error(f"ERROR: {error_type}: {message}")
@@ -401,7 +240,7 @@ async def call_ml_service(task: str, payload: dict) -> dict:
             job_id = payload["job_id"]
 
             # Fetch job description
-            job_doc = await JOBS_COL.find_one({"_id": safe_object_id(job_id, "job_id")})
+            job_doc = await get_jobs_collection().find_one({"_id": safe_object_id(job_id, "job_id")})
             job_desc = job_doc.get("description", "") if job_doc else ""
 
             # Extract CV text
@@ -455,7 +294,7 @@ async def call_ml_service(task: str, payload: dict) -> dict:
 
 async def run_full_ml_pipeline(application_id: str):
     try:
-        application_doc = await APPLICATIONS_COL.find_one({"_id": safe_object_id(application_id, "application_id")})
+        application_doc = await get_applications_collection().find_one({"_id": safe_object_id(application_id, "application_id")})
         if not application_doc:
             logger.error(f"ML Pipeline Error: Application {application_id} not found.")
             await log_error(None, "ML_PIPELINE_NOT_FOUND", f"Application {application_id} not found")
@@ -497,9 +336,9 @@ async def run_full_ml_pipeline(application_id: str):
 
         report_db_model = ReportBase(**report_data)
         report_doc = report_db_model.model_dump(by_alias=True)
-        report_result = await REPORTS_COL.insert_one(report_doc)
+        report_result = await get_reports_collection().insert_one(report_doc)
 
-        await APPLICATIONS_COL.update_one(
+        await get_applications_collection().update_one(
             {"_id": application_doc["_id"]},
             {"$set": {"status": "evaluated", "ml_report_id": str(report_result.inserted_id)}}
         )
@@ -510,7 +349,7 @@ async def run_full_ml_pipeline(application_id: str):
         logger.error(f"FATAL ML PIPELINE FAILURE for {application_id}: {e}")
         await log_error(None, "ML_PIPELINE_FAILURE", str(e))
         try:
-            await APPLICATIONS_COL.update_one(
+            await get_applications_collection().update_one(
                 {"_id": safe_object_id(application_id, "application_id")},
                 {"$set": {"status": "evaluation_failed"}}
             )
@@ -544,17 +383,39 @@ class ConnectionManager:
 
 ws_manager = ConnectionManager()
 
+# LIFESPAN FUNCTION — ADD THIS
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting up... Connecting to MongoDB")
+    try:
+        await connect_to_mongo()
+        logger.info("MongoDB connected successfully!")
+    except Exception as e:
+        logger.error(f"Failed to connect to MongoDB during startup: {e}")
+        raise
+
+    yield  # App runs here
+
+    # Shutdown
+    logger.info("Shutting down... Closing MongoDB")
+    try:
+        await close_mongo_connection()
+        logger.info("MongoDB disconnected!")
+    except Exception as e:
+        logger.error(f"Error during MongoDB shutdown: {e}")
+
 # --- FastAPI App ---
-app = FastAPI(title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json", version="1.0.0")
+app = FastAPI(title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.get("/ping")
 async def ping():
-    return {"msg": "pong", "db": USERS_COL is not None}
+    return {"msg": "pong", "db": get_users_collection() is not None}
 
 # --- CORS ---
-origins = settings.BACKEND_CORS_ORIGINS or ["http://localhost:5173", "http://127.0.0.1:5173"]
+origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -562,16 +423,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting up...")
-    await connect_to_mongo()
-    logger.info("MongoDB connected successfully")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await close_mongo_connection()
 
 # --- Routers ---
 auth_router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -581,22 +432,23 @@ admin_router = APIRouter(prefix="/admin", tags=["Admin/Audit/Analytics"])
 messaging_router = APIRouter(prefix="/messages", tags=["Messaging"])
 feedback_router = APIRouter(prefix="/feedback", tags=["Feedback"])
 ws_router = APIRouter(tags=["WebSockets"])
+app.include_router(ws_router, prefix=settings.API_V1_STR)
 
 # --- Auth Endpoints ---
 @auth_router.post("/register")
 async def register_user(user_in: UserCreate, request: Request):
     start_time = datetime.utcnow()
     try:
-        if await USERS_COL.find_one({"email": user_in.email}):
+        if await get_users_collection().find_one({"email": user_in.email}):
             raise HTTPException(status_code=409, detail="Email already registered")
         if user_in.role not in {"applicant", "recruiter", "admin"}:
             raise HTTPException(status_code=400, detail="Invalid role specified")
         hashed_password = hash_password(user_in.password)
         user_doc = user_in.model_dump(exclude={"password"})
         user_doc["hashed_password"] = hashed_password
-        user_doc["created_at"] = datetime.utcnow()  # ADD THIS LINE
-        result = await USERS_COL.insert_one(user_doc)
-        created_user = await USERS_COL.find_one({"_id": result.inserted_id})
+        user_doc["created_at"] = datetime.utcnow()
+        result = await get_users_collection().insert_one(user_doc)
+        created_user = await get_users_collection().find_one({"_id": result.inserted_id})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(result.inserted_id), "REGISTER", "USER", {"role": user_in.role}, request, duration)
         token = create_access_token({"sub": str(created_user["_id"]), "role": created_user["role"]})
@@ -620,7 +472,8 @@ async def register_user(user_in: UserCreate, request: Request):
 async def login_for_access_token(request: Request, creds: LoginCredentials):
     start_time = datetime.utcnow()
     try:
-        user_doc = await USERS_COL.find_one({"email": creds.email})
+        users_col = get_users_collection()
+        user_doc = await users_col.find_one({"email": creds.email})
         if not user_doc or not verify_password(creds.password, user_doc["hashed_password"]):
             await log_event("UNKNOWN", "LOGIN_FAIL", "AUTH", {"email": creds.email}, request)
             raise HTTPException(
@@ -682,14 +535,14 @@ async def upload_evidence_file(file: Annotated[UploadFile, File()], current_user
 async def apply_for_job(application_in: ApplicationCreate, current_user: UserInDB = Depends(applicant_only), request: Request = None):
     start_time = datetime.utcnow()
     try:
-        job_doc = await JOBS_COL.find_one({"_id": safe_object_id(application_in.job_id, "job_id")})
+        job_doc = await get_jobs_collection().find_one({"_id": safe_object_id(application_in.job_id, "job_id")})
         if not job_doc:
             raise HTTPException(status_code=404, detail="Job not found")
         application_data = application_in.model_dump()
         application_data["applicant_id"] = str(current_user.id)
         application_data["company_id"] = job_doc.get("company_id")
-        result = await APPLICATIONS_COL.insert_one(application_data)
-        created_application = await APPLICATIONS_COL.find_one({"_id": result.inserted_id})
+        result = await get_applications_collection().insert_one(application_data)
+        created_application = await get_applications_collection().find_one({"_id": result.inserted_id})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "APPLY", "APPLICATION", {"job_id": application_in.job_id}, request, duration)
         return ApplicationDB(**created_application)
@@ -705,9 +558,9 @@ async def get_applications(page: int = 1, size: int = 50, current_user: UserInDB
         query = {"applicant_id": str(current_user.id)}
         if current_user.company_id:
             query["company_id"] = current_user.company_id
-        total = await APPLICATIONS_COL.count_documents(query)
+        total = await get_applications_collection().count_documents(query)
         applications = []
-        cursor = APPLICATIONS_COL.find(query).sort("created_at", -1).skip(skip).limit(size)
+        cursor = get_applications_collection().find(query).sort("created_at", -1).skip(skip).limit(size)
         async for app_doc in cursor:
             applications.append(ApplicationDB(**app_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -718,20 +571,27 @@ async def get_applications(page: int = 1, size: int = 50, current_user: UserInDB
         raise
 
 @applicant_router.post("/tests/{application_id}", status_code=200)
-async def submit_test(application_id: str, submission: TestSubmission, current_user: UserInDB = Depends(applicant_only), request: Request = None):
+async def submit_test(
+    application_id: str,
+    submission: TestSubmission,
+    background_tasks: BackgroundTasks,
+    current_user: UserInDB = Depends(applicant_only),
+    request: Request = None
+):
     start_time = datetime.utcnow()
     try:
         app_oid = safe_object_id(application_id, "application_id")
-        application_doc = await APPLICATIONS_COL.find_one({"_id": app_oid, "applicant_id": str(current_user.id)})
+        application_doc = await get_applications_collection().find_one({"_id": app_oid, "applicant_id": str(current_user.id)})
         if not application_doc:
             raise HTTPException(status_code=404, detail="Application not found or not authorized")
-        await APPLICATIONS_COL.update_one(
+        await get_applications_collection().update_one(
             {"_id": app_oid},
             {"$set": {"evidence_bundle.tests_data": submission.model_dump()}}
         )
+        background_tasks.add_task(run_full_ml_pipeline, application_id)
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "SUBMIT", "TEST", {"application_id": application_id}, request, duration)
-        return {"detail": "Test submitted successfully"}
+        return {"detail": "Test submitted successfully. ML evaluation started in background."}
     except Exception as e:
         await log_error(str(current_user.id), "TEST_SUBMISSION_ERROR", str(e))
         raise
@@ -741,12 +601,12 @@ async def get_application_results(application_id: str, current_user: UserInDB = 
     start_time = datetime.utcnow()
     try:
         app_oid = safe_object_id(application_id, "application_id")
-        application_doc = await APPLICATIONS_COL.find_one({"_id": app_oid, "applicant_id": str(current_user.id)})
+        application_doc = await get_applications_collection().find_one({"_id": app_oid, "applicant_id": str(current_user.id)})
         if not application_doc:
             raise HTTPException(status_code=404, detail="Application not found or not authorized")
         if not application_doc.get("ml_report_id"):
             raise HTTPException(status_code=400, detail="Results not available yet")
-        report_doc = await REPORTS_COL.find_one({"_id": safe_object_id(application_doc["ml_report_id"], "ml_report_id")})
+        report_doc = await get_reports_collection().find_one({"_id": safe_object_id(application_doc["ml_report_id"], "ml_report_id")})
         if not report_doc:
             raise HTTPException(status_code=404, detail="Report not found")
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -764,8 +624,8 @@ async def create_job_posting(job_in: JobCreate, current_user: UserInDB = Depends
         job_data = job_in.model_dump()
         job_data["poster_id"] = str(current_user.id)
         job_data["company_id"] = current_user.company_id
-        result = await JOBS_COL.insert_one(job_data)
-        created_job = await JOBS_COL.find_one({"_id": result.inserted_id})
+        result = await get_jobs_collection().insert_one(job_data)
+        created_job = await get_jobs_collection().find_one({"_id": result.inserted_id})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "CREATE", "JOB", {"job_id": str(result.inserted_id), "title": job_in.title}, request, duration)
         return JobDB(**created_job)
@@ -778,15 +638,15 @@ async def update_job_posting(job_id: str, job_in: JobCreate, current_user: UserI
     start_time = datetime.utcnow()
     try:
         job_oid = safe_object_id(job_id, "job_id")
-        job_doc = await JOBS_COL.find_one({"_id": job_oid})
+        job_doc = await get_jobs_collection().find_one({"_id": job_oid})
         if not job_doc:
             raise HTTPException(status_code=404, detail="Job not found")
         if current_user.role != ADMIN and (job_doc["poster_id"] != str(current_user.id) or job_doc.get("company_id") != current_user.company_id):
             raise HTTPException(status_code=403, detail="Not authorized to edit this job.")
         update_data = job_in.model_dump(exclude_unset=True)
         update_data["company_id"] = current_user.company_id
-        await JOBS_COL.update_one({"_id": job_oid}, {"$set": update_data})
-        updated_job_doc = await JOBS_COL.find_one({"_id": job_oid})
+        await get_jobs_collection().update_one({"_id": job_oid}, {"$set": update_data})
+        updated_job_doc = await get_jobs_collection().find_one({"_id": job_oid})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "UPDATE", "JOB", {"job_id": job_id, "title": updated_job_doc.get("title")}, request, duration)
         return JobDB(**updated_job_doc)
@@ -799,13 +659,13 @@ async def delete_job_posting(job_id: str, current_user: UserInDB = Depends(recru
     start_time = datetime.utcnow()
     try:
         job_oid = safe_object_id(job_id, "job_id")
-        job_doc = await JOBS_COL.find_one({"_id": job_oid})
+        job_doc = await get_jobs_collection().find_one({"_id": job_oid})
         if not job_doc:
             raise HTTPException(status_code=404, detail="Job not found")
         if current_user.role != ADMIN and (job_doc["poster_id"] != str(current_user.id) or job_doc.get("company_id") != current_user.company_id):
             raise HTTPException(status_code=403, detail="Not authorized to delete this job.")
-        await JOBS_COL.delete_one({"_id": job_oid})
-        await APPLICATIONS_COL.delete_many({"job_id": job_id})
+        await get_jobs_collection().delete_one({"_id": job_oid})
+        await get_applications_collection().delete_many({"job_id": job_id})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "DELETE", "JOB", {"job_id": job_id, "title": job_doc.get("title")}, request, duration)
     except Exception as e:
@@ -818,9 +678,9 @@ async def get_jobs(page: int = 1, size: int = 50, current_user: UserInDB = Depen
     try:
         skip = (page - 1) * size
         query = {"poster_id": str(current_user.id), "company_id": current_user.company_id} if current_user.role != ADMIN else {}
-        total = await JOBS_COL.count_documents(query)
+        total = await get_jobs_collection().count_documents(query)
         jobs = []
-        cursor = JOBS_COL.find(query).sort("created_at", -1).skip(skip).limit(size)
+        cursor = get_jobs_collection().find(query).sort("created_at", -1).skip(skip).limit(size)
         async for job_doc in cursor:
             jobs.append(JobDB(**job_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -835,16 +695,16 @@ async def get_job_applications(job_id: str, page: int = 1, size: int = 50, curre
     start_time = datetime.utcnow()
     try:
         job_oid = safe_object_id(job_id, "job_id")
-        job_doc = await JOBS_COL.find_one({"_id": job_oid})
+        job_doc = await get_jobs_collection().find_one({"_id": job_oid})
         if not job_doc:
             raise HTTPException(status_code=404, detail="Job not found")
         if current_user.role != ADMIN and (job_doc["poster_id"] != str(current_user.id) or job_doc.get("company_id") != current_user.company_id):
             raise HTTPException(status_code=403, detail="Not authorized to view applications for this job.")
         skip = (page - 1) * size
         query = {"job_id": job_id, "company_id": job_doc["company_id"]}
-        total = await APPLICATIONS_COL.count_documents(query)
+        total = await get_applications_collection().count_documents(query)
         applications = []
-        cursor = APPLICATIONS_COL.find(query).sort("created_at", -1).skip(skip).limit(size)
+        cursor = get_applications_collection().find(query).sort("created_at", -1).skip(skip).limit(size)
         async for app_doc in cursor:
             applications.append(ApplicationDB(**app_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -861,16 +721,16 @@ async def update_application_outcome(application_id: str, outcome: str, feedback
         if outcome not in {"hired", "rejected", "pending"}:
             raise HTTPException(status_code=400, detail="Invalid outcome value")
         app_oid = safe_object_id(application_id, "application_id")
-        application_doc = await APPLICATIONS_COL.find_one({"_id": app_oid})
+        application_doc = await get_applications_collection().find_one({"_id": app_oid})
         if not application_doc:
             raise HTTPException(status_code=404, detail="Application not found")
-        job_doc = await JOBS_COL.find_one({"_id": safe_object_id(application_doc["job_id"], "job_id")})
+        job_doc = await get_jobs_collection().find_one({"_id": safe_object_id(application_doc["job_id"], "job_id")})
         if current_user.role != ADMIN and (job_doc["poster_id"] != str(current_user.id) or job_doc.get("company_id") != current_user.company_id):
             raise HTTPException(status_code=403, detail="Not authorized to update this application.")
         update_data = {"outcome": outcome}
         if feedback:
             update_data["feedback_from_recruiter"] = feedback
-        await APPLICATIONS_COL.update_one({"_id": app_oid}, {"$set": update_data})
+        await get_applications_collection().update_one({"_id": app_oid}, {"$set": update_data})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "UPDATE", "APPLICATION_OUTCOME", {"application_id": application_id, "outcome": outcome}, request, duration)
         return {"detail": "Application outcome updated"}
@@ -885,13 +745,13 @@ async def submit_feedback(feedback_in: FeedbackBase, current_user: UserInDB = De
     try:
         if feedback_in.application_id:
             app_oid = safe_object_id(feedback_in.application_id, "application_id")
-            application_doc = await APPLICATIONS_COL.find_one({"_id": app_oid, "applicant_id": str(current_user.id)})
+            application_doc = await get_applications_collection().find_one({"_id": app_oid, "applicant_id": str(current_user.id)})
             if not application_doc and current_user.role == APPLICANT:
                 raise HTTPException(status_code=403, detail="Not authorized to provide feedback for this application")
         feedback_doc = feedback_in.model_dump()
         feedback_doc["user_id"] = str(current_user.id)
-        result = await FEEDBACK_COL.insert_one(feedback_doc)
-        created_feedback = await FEEDBACK_COL.find_one({"_id": result.inserted_id})
+        result = await get_feedback_collection().insert_one(feedback_doc)
+        created_feedback = await get_feedback_collection().find_one({"_id": result.inserted_id})
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "SUBMIT", "FEEDBACK", {"application_id": feedback_in.application_id}, request, duration)
         return FeedbackDB(**created_feedback)
@@ -905,9 +765,9 @@ async def get_feedback(page: int = 1, size: int = 50, current_user: UserInDB = D
     try:
         skip = (page - 1) * size
         query = {} if current_user.role == ADMIN else {"company_id": current_user.company_id}
-        total = await FEEDBACK_COL.count_documents(query)
+        total = await get_feedback_collection().count_documents(query)
         feedback_items = []
-        cursor = FEEDBACK_COL.find(query).sort("timestamp", -1).skip(skip).limit(size)
+        cursor = get_feedback_collection().find(query).sort("timestamp", -1).skip(skip).limit(size)
         async for feedback_doc in cursor:
             feedback_items.append(FeedbackDB(**feedback_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -940,7 +800,7 @@ async def get_competency_analytics(current_user: UserInDB = Depends(admin_only),
             {"$group": {"_id": "$competencies.level", "count": {"$sum": 1}, "titles": {"$addToSet": "$title"}}},
             {"$project": {"competency_level": "$_id", "count": 1, "titles": 1, "_id": 0}}
         ]
-        results = await JOBS_COL.aggregate(pipeline).to_list(None)
+        results = await get_jobs_collection().aggregate(pipeline).to_list(None)
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "VIEW", "ANALYTICS", {"type": "competency_breakdown"}, request, duration)
         return {"analysis_type": "Job Competency Breakdown", "results": results}
@@ -954,9 +814,9 @@ async def get_audit_logs(page: int = 1, size: int = 50, current_user: UserInDB =
     try:
         skip = (page - 1) * size
         query = {} if not current_user.company_id else {"company_id": current_user.company_id}
-        total = await AUDIT_LOGS_COL.count_documents(query)
+        total = await get_audit_logs_collection().count_documents(query)
         logs = []
-        cursor = AUDIT_LOGS_COL.find(query).sort("timestamp", -1).skip(skip).limit(size)
+        cursor = get_audit_logs_collection().find(query).sort("timestamp", -1).skip(skip).limit(size)
         async for log_doc in cursor:
             logs.append(AuditLogEntry(**log_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -972,9 +832,9 @@ async def get_error_logs(page: int = 1, size: int = 50, current_user: UserInDB =
     try:
         skip = (page - 1) * size
         query = {} if not current_user.company_id else {"company_id": current_user.company_id}
-        total = await ERROR_LOGS_COL.count_documents(query)
+        total = await get_error_logs_collection().count_documents(query)
         logs = []
-        cursor = ERROR_LOGS_COL.find(query).sort("timestamp", -1).skip(skip).limit(size)
+        cursor = get_error_logs_collection().find(query).sort("timestamp", -1).skip(skip).limit(size)
         async for log_doc in cursor:
             logs.append(ErrorLogEntry(**log_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -991,12 +851,12 @@ async def send_message_rest(request: Request, message_in: MessageBase, current_u
     start_time = datetime.utcnow()
     try:
         message_doc = MessageDB(sender_id=str(current_user.id), receiver_id=message_in.receiver_id, content=message_in.content)
-        result = await MESSAGES_COL.insert_one(message_doc.model_dump(by_alias=True))
+        result = await get_messages_collection().insert_one(message_doc.model_dump(by_alias=True))
         message_to_notify = json.dumps({"sender_id": str(current_user.id), "content": message_in.content, "timestamp": str(datetime.utcnow())})
         await ws_manager.send_personal_message(message_to_notify, message_in.receiver_id)
         duration = (datetime.utcnow() - start_time).total_seconds()
         await log_event(str(current_user.id), "SEND", "MESSAGE", {"receiver": message_in.receiver_id}, request, duration)
-        created_message = await MESSAGES_COL.find_one({"_id": result.inserted_id})
+        created_message = await get_messages_collection().find_one({"_id": result.inserted_id})
         return MessageDB(**created_message)
     except Exception as e:
         await log_error(str(current_user.id), "SEND_MESSAGE_ERROR", str(e))
@@ -1012,9 +872,9 @@ async def get_messages(other_user_id: str, page: int = 1, size: int = 50, curren
             {"sender_id": user_id, "receiver_id": other_user_id},
             {"sender_id": other_user_id, "receiver_id": user_id}
         ]}
-        total = await MESSAGES_COL.count_documents(query)
+        total = await get_messages_collection().count_documents(query)
         messages = []
-        cursor = MESSAGES_COL.find(query).sort("timestamp", -1).skip(skip).limit(size)
+        cursor = get_messages_collection().find(query).sort("timestamp", -1).skip(skip).limit(size)
         async for msg_doc in cursor:
             messages.append(MessageDB(**msg_doc))
         messages.reverse()
@@ -1025,7 +885,7 @@ async def get_messages(other_user_id: str, page: int = 1, size: int = 50, curren
         await log_error(str(current_user.id), "VIEW_MESSAGES_ERROR", str(e))
         raise
 
-# --- WebSocket Endpoint (DIRECT ON APP) ---
+# --- WebSocket Endpoint ---
 @app.websocket("/api/v1/ws/messages/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     start_time = datetime.utcnow()
@@ -1033,7 +893,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     try:
         await websocket.accept()
 
-        # Try header first
         auth_header = websocket.headers.get("authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ", 1)[1]
@@ -1042,7 +901,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 await websocket.close(code=1008, reason="Token mismatch")
                 return
         else:
-            # Fallback to client-sent auth message
             try:
                 auth_msg_task = asyncio.create_task(websocket.receive_text())
                 done, _ = await asyncio.wait({auth_msg_task}, timeout=5.0)
@@ -1092,7 +950,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 continue
 
             msg_doc = MessageDB(sender_id=user_id, receiver_id=receiver_id, content=content)
-            await MESSAGES_COL.insert_one(msg_doc.model_dump(by_alias=True))
+            await get_messages_collection().insert_one(msg_doc.model_dump(by_alias=True))
             out_msg = json.dumps({
                 "sender_id": user_id,
                 "receiver_id": receiver_id,
@@ -1100,7 +958,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 "timestamp": str(datetime.utcnow())
             })
             await ws_manager.send_personal_message(out_msg, receiver_id)
-            # Echo to sender
             await websocket.send_text(out_msg)
 
     except WebSocketDisconnect:
@@ -1118,9 +975,9 @@ async def get_all_jobs(page: int = 1, size: int = 50, request: Request = None):
     start_time = datetime.utcnow()
     try:
         skip = (page - 1) * size
-        total = await JOBS_COL.count_documents({})
+        total = await get_jobs_collection().count_documents({})
         jobs = []
-        cursor = JOBS_COL.find().sort("created_at", -1).skip(skip).limit(size)
+        cursor = get_jobs_collection().find().sort("created_at", -1).skip(skip).limit(size)
         async for job_doc in cursor:
             jobs.append(JobDB(**job_doc))
         duration = (datetime.utcnow() - start_time).total_seconds()
@@ -1132,12 +989,7 @@ async def get_all_jobs(page: int = 1, size: int = 50, request: Request = None):
 
 @app.get('/health')
 async def health():
-    db_connected = bool(db_client.client)
-    return {
-        "status": "ok",
-        "db_connected": db_connected,
-        "db_name": settings.DB_NAME if db_connected else None
-    }
+    return {"status": "ok", "db": get_users_collection() is not None}
 
 @app.get("/")
 def root():

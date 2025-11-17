@@ -1,19 +1,19 @@
+# backend/auth.py
 """
-Authentication utilities
+Authentication utilities for Faircruit
 """
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from typing import Optional
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
-from bson import ObjectId
-from config import settings, get_db
-from models.user import User
+from database import USERS_COL
+from utils import safe_object_id
+from utils import decode_token
+from models.schemas import UserInDB
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
-    """Get the current authenticated user"""
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
+    """Get the current authenticated user from JWT token"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -21,23 +21,15 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
     )
     
     try:
-        payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
-            algorithms=[settings.ALGORITHM]
-        )
+        payload = decode_token(token)
         user_id: str = payload.get("sub")
-        if user_id is None:
+        if not user_id:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
-    db = await get_db()
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-        
-    user_data = await db["users"].find_one({"_id": ObjectId(user_id)})
-    if user_data is None:
+    user_doc = await USERS_COL.find_one({"_id": safe_object_id(user_id)})
+    if not user_doc:
         raise credentials_exception
 
-    return User(**user_data)
+    return UserInDB(**user_doc)

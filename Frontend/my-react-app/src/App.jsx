@@ -1,35 +1,22 @@
-// src/App.jsx
 import React from 'react';
-import ReactDOM from 'react-dom/client';
-import {
-  QueryClientProvider,
-  queryClient,
-  ToastProvider,
-  RouterProvider,
-  AuthProvider,
-  WebSocketProvider,  // FIXED: Was WSProvider
-  AppContent,
-} from './faircruit.jsx';
+import { AuthProvider, RouterProvider, WebSocketProvider, ToastProvider, queryClient } from './Backend.jsx';
+import Root from './Design.jsx';
 import './Faircruit.css';
 
-// === FULL APP WITH ALL PROVIDERS ===
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ToastProvider>
-      <RouterProvider>
-        <AuthProvider>
-          <WebSocketProvider>  {/* FIXED: Use WebSocketProvider */}
-            <AppContent />
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <RouterProvider>
+          <WebSocketProvider>
+            <ToastProvider>
+              <Root />
+            </ToastProvider>
           </WebSocketProvider>
-        </AuthProvider>
-      </RouterProvider>
-    </ToastProvider>
-  </QueryClientProvider>
-);
+        </RouterProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+};
 
-// === RENDER HERE ===
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+export default App;
