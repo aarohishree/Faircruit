@@ -122,48 +122,56 @@ const Footer = () => (
 );
 
 // ───────────────────────────────────────────────────────────────────────
-// LANDING PAGE
+// LANDING PAGE - Clean, simple
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
+
   return (
     <>
-      <section className="hero">
-        <div className="hero-bg">
-          <img src="https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=1600" alt="Team collaboration" />
-        </div>
-        <div className="container hero-content">
-          <h1>Hire by <span className="highlight">Competence</span>,<br/>Not Credentials.</h1>
-          <p className="hero-subtitle">
-            AI-powered, bias-reduced hiring with structured 4-level tests and LLM analysis.
-          </p>
-          <div className="cta-group">
-            <button className="btn btn-lg" onClick={() => navigate('/get-started')}>
-              Start as Applicant
-            </button>
-            <button className="btn btn-outline btn-lg" onClick={() => navigate('/get-started')}>
-              Post a Job
-            </button>
-          </div>
-        </div>
-      </section>
-      <section className="container section">
-        <h2>How It Works</h2>
-        <div className="timeline">
+      <div className="hero" style={{
+        backgroundImage: 'linear-gradient(135deg, rgba(102, 126, 234, 0.85) 0%, rgba(118, 75, 162, 0.85) 100%), url("https://images.unsplash.com/photo-1552664730-d307ca884978?w=1600")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        textAlign: 'center',
+        padding: '120px 20px',
+        color: 'white',
+        minHeight: '500px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center'
+      }}>
+        <h1 style={{ fontSize: '3.5rem', marginBottom: '15px', fontWeight: 'bold', textShadow: '2px 2px 8px rgba(0,0,0,0.3)' }}>Fair Recruitment Platform</h1>
+        <p style={{ fontSize: '1.3rem', marginBottom: '40px', textShadow: '1px 1px 4px rgba(0,0,0,0.3)' }}>Hire by Competence, Not Credentials</p>
+        <button
+          className="btn btn-lg"
+          onClick={() => navigate(isLoggedIn ? '/dashboard/applicant' : '/get-started')}
+          style={{ padding: '16px 36px', fontSize: '1.1rem', background: 'white', color: '#667eea', fontWeight: 'bold', cursor: 'pointer', border: 'none', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', transition: 'transform 0.2s' }}
+          onMouseOver={e => e.target.style.transform = 'scale(1.05)'}
+          onMouseOut={e => e.target.style.transform = 'scale(1)'}
+        >
+          {isLoggedIn ? 'Go to Dashboard' : 'Get Started'}
+        </button>
+      </div>
+
+      <section className="container section" style={{ maxWidth: '1200px', margin: '0 auto', padding: '60px 20px' }}>
+        <h2 style={{ textAlign: 'center', marginBottom: '40px' }}>How It Works</h2>
+        <div className="timeline" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '30px' }}>
           {[
-            { title: 'Upload & Assess', desc: 'Submit evidence and complete structured tests.', img: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400' },
-            { title: 'AI Analyze', desc: 'LLMs extract skills and generate competency vectors.', img: 'https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=400' },
-            { title: 'Hire Fairly', desc: 'Review objective scores and ML reports.', img: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400' },
+            { title: 'Apply', desc: 'Browse available positions', icon: '📋' },
+            { title: 'Test', desc: 'Take AI-generated tests', icon: '🧠' },
+            { title: 'Analysis', desc: 'Get Gemini evaluation', icon: '✨' },
+            { title: 'Results', desc: 'View your scores', icon: '✓' },
           ].map((step, i) => (
-            <div key={i} className="timeline-item">
-              <img src={step.img} alt={step.title} className="timeline-img" />
-              <div className="timeline-icon">{i + 1}</div>
+            <div key={i} style={{ textAlign: 'center', padding: '20px' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '10px' }}>{step.icon}</div>
               <h3>{step.title}</h3>
-              <p>{step.desc}</p>
+              <p style={{ color: '#718096' }}>{step.desc}</p>
             </div>
           ))}
         </div>
       </section>
-      <Footer />
     </>
   );
 };
@@ -176,7 +184,6 @@ const FAQItem = ({ question, answer }) => {
     <div className="faq-item">
       <button className="faq-question" onClick={() => setOpen(!open)}>
         {question}
-        <span className={`arrow ${open ? 'open' : ''}`}>Down Arrow</span>
       </button>
       {open && <div className="faq-answer">{answer}</div>}
     </div>
@@ -216,7 +223,6 @@ const AboutUs = () => {
           {faqs.map((faq, i) => <FAQItem key={i} question={faq.q} answer={faq.a} />)}
         </div>
       </section>
-      <Footer />
     </>
   );
 };
@@ -249,23 +255,48 @@ const GetStarted = () => {
 // ───────────────────────────────────────────────────────────────────────
 // LOGIN
 const LoginForm = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const { login, authAxios } = useAuth();
   const addToast = useToast();
   const navigate = useNavigate();
 
   const { mutate: loginMutate, isPending } = useMutation({
     mutationFn: async ({ email, password }) => {
-      const res = await authAxios.post('/auth/login', { email, password });
-      return res.data;
+      console.log('🔐 Attempting login with email:', email);
+      try {
+        const res = await authAxios.post('/auth/login', { email, password });
+        console.log('✅ Login response received:', res.data);
+        return res.data;
+      } catch (err) {
+        if (err.response) {
+          // Backend error
+          console.error('❌ Login error:', err.response.data);
+          throw new Error(err.response.data.detail || 'Login failed');
+        } else {
+          // Network or unknown error
+          console.error('❌ Login error:', err.message);
+          throw new Error('Network error or backend not running');
+        }
+      }
     },
     onSuccess: (data) => {
-      login(data.access_token, data.user);
-      addToast('Login successful!', 'success');
-      navigate(`/dashboard/${data.user.role}`);
+      try {
+        console.log('✅ onSuccess triggered, data:', data);
+        login(data.access_token, data.user);
+        console.log('✅ login() called');
+        addToast('Login successful!', 'success');
+        console.log('📍 About to navigate to:', `/dashboard/${data.user.role}`);
+        navigate(`/dashboard/${data.user.role}`);
+      } catch (e) {
+        console.error('❌ Error after login success:', e);
+        addToast('Login succeeded but frontend error occurred.', 'error');
+      }
     },
-    onError: () => addToast('Invalid credentials.', 'error')
+    onError: (err) => {
+      console.error('❌ onError triggered:', err);
+      addToast(err.message || 'Invalid credentials.', 'error');
+    }
   });
 
   const handleSubmit = (e) => {
@@ -278,12 +309,26 @@ const LoginForm = () => {
       <h2>Login</h2>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label>Email</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <label htmlFor="login-email">Email</label>
+          <input
+            id="login-email"
+            name="email"
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+          />
         </div>
         <div className="form-group">
-          <label>Password</label>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          <label htmlFor="login-password">Password</label>
+          <input
+            id="login-password"
+            name="password"
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+          />
         </div>
         <button type="submit" className="btn" disabled={isPending}>
           {isPending ? 'Logging in...' : 'Login'}
@@ -294,609 +339,17 @@ const LoginForm = () => {
 };
 
 // ───────────────────────────────────────────────────────────────────────
-// VIDEO RECORDER
-const VideoRecorder = () => {
-  const videoRef = useRef(null);
-  const [recording, setRecording] = useState(false);
-  const addToast = useToast();
-
-  useEffect(() => {
-    if (videoRef.current && !recording) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-          videoRef.current.srcObject = stream;
-        })
-        .catch(() => addToast('Camera access denied.', 'error'));
-    }
-  }, [recording, addToast]);
-
-  return (
-    <div className="video-recorder">
-      <video ref={videoRef} autoPlay muted className="webcam-feed" />
-      <button 
-        onClick={() => setRecording(!recording)}
-        className={`btn ${recording ? 'btn-stop' : 'btn-record'}`}
-      >
-        {recording ? 'Stop' : 'Start'} Recording
-      </button>
-    </div>
-  );
-};
- const UploadComponent = ({ applicationId }) => {
-  const { authAxios } = useAuth();
-  const addToast = useToast();
-  const [uploading, setUploading] = useState(false);
-
-  const handleUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      await authAxios.post(`/api/v1/applicant/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      addToast('CV uploaded!', 'success');
-    } catch {
-      addToast('Upload failed.', 'error');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  return (
-    <div className="upload-box">
-      <input type="file" accept=".pdf,.doc,.docx" onChange={handleUpload} disabled={uploading} />
-      <p>{uploading ? 'Uploading...' : 'Drop CV here or click to upload'}</p>
-    </div>
-  );
-};
-// ───────────────────────────────────────────────────────────────────────
-// TEST FLOW
-const TestFlow = () => {
-  const { applicationId } = useParams();
-  const { authAxios, user } = useAuth();
-  const addToast = useToast();
-  const navigate = useNavigate();
-
-  const [level, setLevel] = useState(1);
-  const [questions, setQuestions] = useState([]);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [timer, setTimer] = useState(1800);
-  const [answer, setAnswer] = useState('');
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [showWarning, setShowWarning] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const submitMutation = useSubmitTest(applicationId);
-
-  const fetchQuestions = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const appRes = await authAxios.get('/applicant/applications');
-      const app = appRes.data.items.find(a => a.id === applicationId);
-      if (!app) throw new Error("Application not found");
-
-      const qRes = await authAxios.post('/ml/generate-questions', {
-        job_id: app.job_id
-      });
-
-      setQuestions(qRes.data.questions);
-      const q = qRes.data.questions[0];
-      setCurrentQuestion(q);
-      setTimer(q.time_limit_seconds);
-    } catch (err) {
-      addToast('Failed to load questions.', 'error');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [applicationId, authAxios, addToast]);
-
-  useEffect(() => {
-    fetchQuestions();
-  }, [fetchQuestions]);
-
-  useEffect(() => {
-    if (questions.length > 0 && level <= 4) {
-      const q = questions[level - 1];
-      setCurrentQuestion(q);
-      setTimer(q.time_limit_seconds);
-      setAnswer('');
-      setSelectedOption(null);
-    }
-  }, [level, questions]);
-
-  useEffect(() => {
-    if (!currentQuestion) return;
-    const id = setInterval(() => {
-      setTimer(t => {
-        if (t <= 1) {
-          clearInterval(id);
-          handleSubmit();
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [currentQuestion, level]);
-
-  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
-
-  const handleSubmit = () => {
-    if (level === 1 && selectedOption === null) return addToast('Select an answer!', 'error');
-    if (level > 1 && level < 4 && !answer.trim()) return addToast('Write your answer!', 'error');
-
-    const payload = {
-      level,
-      question_id: currentQuestion?.question_id || `q${level}`,
-      response: level === 1 ? selectedOption : answer
-    };
-
-    submitMutation.mutate(payload, {
-      onSuccess: () => {
-        if (level < 4) {
-          setLevel(prev => prev + 1);
-          addToast(`Level ${level} submitted!`, 'success');
-        } else {
-          addToast('Test completed!', 'success');
-          navigate('/dashboard/applicant');
-        }
-      },
-      onError: () => addToast('Submission failed.', 'error')
-    });
-  };
-
-  useEffect(() => {
-    const handle = () => setShowWarning(document.hidden);
-    document.addEventListener('visibilitychange', handle);
-    return () => document.removeEventListener('visibilitychange', handle);
-  }, []);
-
-  if (isLoading) return <div className="test-card">Loading questions from Gemini...</div>;
-
-  return (
-    <div className="test-container">
-      {showWarning && <div className="exam-protection-warning">DO NOT SWITCH TABS!</div>}
-      
-      <div className="test-header">
-        <div className="timer-display">{formatTime(timer)}</div>
-        <div className="level-indicator">
-          Level {level}/4 – {currentQuestion?.type?.toUpperCase() || 'Loading'}
-        </div>
-      </div>
-
-      <div className="test-card">
-        <div className="question-box">
-          <h3>{currentQuestion?.question || 'Loading...'}</h3>
-
-          {level === 1 && currentQuestion?.options && (
-            <div className="mcq-options">
-              {currentQuestion.options.map((opt, i) => (
-                <label key={i} className="radio-option">
-                  <input
-                    type="radio"
-                    checked={selectedOption === i}
-                    onChange={() => setSelectedOption(i)}
-                  />
-                  <span>{opt}</span>
-                </label>
-              ))}
-            </div>
-          )}
-
-          {(level === 2 || level === 3) && (
-            <textarea
-              className="answer-input"
-              placeholder="Write your detailed response..."
-              value={answer}
-              onChange={e => setAnswer(e.target.value)}
-              rows={14}
-            />
-          )}
-
-          {level === 4 && <VideoRecorder />}
-
-          <div className="test-actions">
-            <button className="btn btn-submit" onClick={handleSubmit}>
-              {level < 4 ? 'Submit & Next' : 'Finish Test'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ApplyPage = () => {
-  const { jobId } = useParams();
-  const { authAxios } = useAuth();
-  const navigate = useNavigate();
-  const addToast = useToast();
-  const [applicationId, setApplicationId] = useState(null);
-
-  useEffect(() => {
-    const apply = async () => {
-      try {
-        const res = await authAxios.post('/applicant/apply', { job_id: jobId });
-        setApplicationId(res.data.id);
-        addToast('Application created! Upload CV & start test.', 'success');
-      } catch {
-        addToast('Failed to apply.', 'error');
-      }
-    };
-    apply();
-  }, [jobId]);
-
-  if (!applicationId) return <div className="card">Creating application...</div>;
-
-  return (
-    <div className="apply-flow">
-      <h2>Step 1: Upload CV</h2>
-      <UploadComponent applicationId={applicationId} />
-
-      <h2>Step 2: Take Test</h2>
-      <button
-        className="btn btn-lg"
-        onClick={() => navigate(`/dashboard/applicant/test/${applicationId}`)}
-      >
-        Start 4-Level Test
-      </button>
-    </div>
-  );
-};
-
-const ResultsPage = () => {
-  const { applicationId } = useParams();
-  const { data: report, isLoading } = useQuery({
-    queryKey: ['report', applicationId],
-    queryFn: async () => {
-      const res = await authAxios.get(`/api/v1/applicant/results/${applicationId}`);
-      return res.data;
-    },
-  });
-
-  if (isLoading) return <div className="card">Loading results...</div>;
-
-  return (
-    <div className="card large">
-      <h2>Your Evaluation Report</h2>
-      <div className="report">
-        <p><strong>Score:</strong> {report.profile.score}/100</p>
-        <p><strong>Narrative:</strong> {report.narrative}</p>
-        {report.visuals_urls?.[0] && <img src={report.visuals_urls[0]} alt="Chart" />}
-      </div>
-      <button className="btn" onClick={() => window.print()}>Download PDF</button>
-    </div>
-  );
-};
-// ───────────────────────────────────────────────────────────────────────
-// APPLICANT DASHBOARD
-const ApplicantDashboard = () => {
-  const [tab, setTab] = useState('home');
-  const { data: jobs, isLoading: jobsLoading } = useJobs();
-  const { data: applications, isLoading: appsLoading } = useApplicantResults();
-  const { upload: uploadCV, uploading, progress } = useFileUpload();
-  const submitTestMutation = useSubmitTest();
-  const navigate = useNavigate();
-  const { user, authAxios } = useAuth();
-  const { showToast } = useToast();
-
-  // States for CV upload section
-  const [showCVUpload, setShowCVUpload] = useState(false);
-  const [cvFile, setCVFile] = useState(null);
-
-  // States for test taking
-  const [selectedJob, setSelectedJob] = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState({});
-  const [testInProgress, setTestInProgress] = useState(false);
-  const [loadingQuestions, setLoadingQuestions] = useState(false);
-
-  // Handle CV file selection and upload
-  const handleCVUpload = async (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setCVFile(file);
-      await uploadCV(file);
-      setShowCVUpload(false);
-      showToast('CV uploaded successfully!', 'success');
-    }
-  };
-
-  // Generate test questions for selected job
-  const startTest = async (jobId) => {
-    setLoadingQuestions(true);
-    try {
-      const res = await authAxios.post('/ml/generate-questions', { job_id: jobId });
-      setQuestions(res.data.questions || []);
-      setSelectedJob(jobId);
-      setTestInProgress(true);
-      setCurrentQuestionIndex(0);
-      setAnswers({});
-      showToast('Test questions loaded! Answer all 4 levels.', 'info');
-    } catch (err) {
-      showToast(err.response?.data?.detail || 'Failed to load test questions', 'error');
-    } finally {
-      setLoadingQuestions(false);
-    }
-  };
-
-  // Handle answer input for current question
-  const handleAnswerChange = (value) => {
-    setAnswers(prev => ({
-      ...prev,
-      [currentQuestionIndex]: value
-    }));
-  };
-
-  // Move to next question
-  const goToNextQuestion = () => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    }
-  };
-
-  // Submit test answers
-  const submitTest = async () => {
-    if (Object.keys(answers).length !== questions.length) {
-      showToast('Please answer all questions before submitting', 'error');
-      return;
-    }
-
-    try {
-      const testData = {
-        answers: questions.map((q, idx) => ({
-          level: q.level,
-          type: q.type,
-          question: q.question,
-          answer: answers[idx],
-          time_limit: q.time_limit_seconds
-        }))
-      };
-
-      // Create application first if needed
-      const appRes = await authAxios.post('/applicant/apply', {
-        job_id: selectedJob,
-        cv_file_path: 'uploaded',
-        test_attempt: 1
-      });
-
-      const applicationId = appRes.data.id;
-
-      // Submit test answers
-      await authAxios.post(`/applicant/tests/${applicationId}`, testData);
-
-      showToast('Test submitted! Waiting for Gemini evaluation...', 'success');
-      setTestInProgress(false);
-      setTab('results');
-    } catch (err) {
-      showToast(err.response?.data?.detail || 'Failed to submit test', 'error');
-    }
-  };
-
-  const currentQuestion = questions[currentQuestionIndex];
-  const progressPercent = ((currentQuestionIndex + 1) / questions.length) * 100;
-
-  return (
-    <div className="dashboard">
-      <aside className="sidebar">
-        {['home', 'tests', 'results', 'messages'].map(t => (
-          <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </aside>
-      <main className="main-content">
-        {/* TAB: HOME - Available Jobs & CV Upload */}
-        {tab === 'home' && (
-          <div className="card">
-            <h3>Welcome, {user?.username}!</h3>
-            
-            {/* CV Upload Section */}
-            <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-              <h4>Step 1: Upload Your CV</h4>
-              {!showCVUpload ? (
-                <button className="btn" onClick={() => setShowCVUpload(true)}>
-                  {uploading ? `Uploading... ${progress}%` : 'Upload CV'}
-                </button>
-              ) : (
-                <div>
-                  <input 
-                    type="file" 
-                    accept=".pdf,.doc,.docx,.txt" 
-                    onChange={handleCVUpload}
-                    disabled={uploading}
-                  />
-                  {uploading && <div style={{ marginTop: '10px' }}>Upload Progress: {progress}%</div>}
-                </div>
-              )}
-            </div>
-
-            {/* Available Jobs Section */}
-            <h4>Step 2: Select a Job and Take the Test</h4>
-            {jobsLoading ? (
-              <p>Loading jobs...</p>
-            ) : jobs && jobs.length > 0 ? (
-              <div className="grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                {jobs.map(job => (
-                  <div key={job._id} className="job-card" style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
-                    <h4>{job.title}</h4>
-                    <p style={{ color: '#666', fontSize: '14px' }}>{job.description?.substring(0, 100)}...</p>
-                    {job.competencies && (
-                      <div style={{ marginBottom: '10px' }}>
-                        <strong>Competencies:</strong>
-                        <ul style={{ fontSize: '12px', margin: '5px 0' }}>
-                          {job.competencies.map((comp, idx) => <li key={idx}>{comp}</li>)}
-                        </ul>
-                      </div>
-                    )}
-                    <button 
-                      className="btn" 
-                      onClick={() => startTest(job._id)}
-                      disabled={loadingQuestions}
-                    >
-                      {loadingQuestions ? 'Loading Test...' : 'Start Test'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No jobs available at the moment.</p>
-            )}
-          </div>
-        )}
-
-        {/* TAB: TESTS - In-Progress Test Taking */}
-        {tab === 'tests' && (
-          <div className="card">
-            {!testInProgress ? (
-              <div style={{ textAlign: 'center' }}>
-                <h3>No Active Test</h3>
-                <p>Click "Home" to select a job and start a test.</p>
-              </div>
-            ) : currentQuestion ? (
-              <div>
-                <h3>Competency Assessment Test</h3>
-                <div style={{ marginBottom: '20px', textAlign: 'right' }}>
-                  Question {currentQuestionIndex + 1} of {questions.length}
-                </div>
-
-                {/* Progress Bar */}
-                <div style={{ width: '100%', height: '8px', backgroundColor: '#eee', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
-                  <div style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#4CAF50', transition: 'width 0.3s' }}></div>
-                </div>
-
-                {/* Question Display */}
-                <div style={{ marginBottom: '30px', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px', borderLeft: '4px solid #2196F3' }}>
-                  <h4>Level {currentQuestion.level}: {currentQuestion.type.toUpperCase()}</h4>
-                  <p style={{ fontSize: '16px', margin: '15px 0' }}>{currentQuestion.question}</p>
-
-                  {/* Answer Input */}
-                  {currentQuestion.type === 'mcq' ? (
-                    <div style={{ marginTop: '15px' }}>
-                      {currentQuestion.options?.map((opt, idx) => (
-                        <label key={idx} style={{ display: 'block', marginBottom: '10px', cursor: 'pointer' }}>
-                          <input
-                            type="radio"
-                            name="answer"
-                            value={idx}
-                            checked={answers[currentQuestionIndex] == idx}
-                            onChange={(e) => handleAnswerChange(e.target.value)}
-                            style={{ marginRight: '10px' }}
-                          />
-                          {opt}
-                        </label>
-                      ))}
-                    </div>
-                  ) : (
-                    <textarea
-                      placeholder={`Your answer for Level ${currentQuestion.level}...`}
-                      value={answers[currentQuestionIndex] || ''}
-                      onChange={(e) => handleAnswerChange(e.target.value)}
-                      style={{ width: '100%', minHeight: '120px', padding: '10px', marginTop: '10px', borderRadius: '4px', border: '1px solid #ddd', fontFamily: 'monospace' }}
-                    />
-                  )}
-
-                  {/* Time Limit Info */}
-                  <p style={{ fontSize: '12px', color: '#999', marginTop: '15px' }}>
-                    Time limit: {currentQuestion.time_limit_seconds} seconds
-                  </p>
-                </div>
-
-                {/* Navigation Buttons */}
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', marginTop: '20px' }}>
-                  <button 
-                    className="btn"
-                    onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
-                    disabled={currentQuestionIndex === 0}
-                  >
-                    Previous
-                  </button>
-
-                  {currentQuestionIndex < questions.length - 1 ? (
-                    <button 
-                      className="btn"
-                      onClick={goToNextQuestion}
-                      disabled={!answers[currentQuestionIndex]}
-                    >
-                      Next
-                    </button>
-                  ) : (
-                    <button 
-                      className="btn btn-success"
-                      onClick={submitTest}
-                      disabled={Object.keys(answers).length !== questions.length}
-                    >
-                      Submit Test
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p>Loading test...</p>
-            )}
-          </div>
-        )}
-
-        {/* TAB: RESULTS - View Test Results & Gemini Evaluation */}
-        {tab === 'results' && (
-          <div className="card">
-            <h3>Your Test Results</h3>
-            {appsLoading ? (
-              <p>Loading results...</p>
-            ) : applications && applications.length > 0 ? (
-              <div style={{ display: 'grid', gap: '20px' }}>
-                {applications.map(app => (
-                  <div key={app._id} style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#fafafa' }}>
-                    <h4>{app.job_title}</h4>
-                    <p><strong>Status:</strong> {app.status}</p>
-                    {app.outcome && <p><strong>Outcome:</strong> {app.outcome}</p>}
-                    {app.ml_report_id && (
-                      <div style={{ marginTop: '10px', padding: '10px', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
-                        <p><strong>Evaluation Available:</strong> Gemini has reviewed your CV and test answers</p>
-                        <button className="btn" onClick={() => navigate(`/results/${app._id}`)}>
-                          View Full Report
-                        </button>
-                      </div>
-                    )}
-                    {!app.ml_report_id && app.status !== 'evaluated' && (
-                      <p style={{ color: '#f57c00' }}>⏳ Gemini is evaluating your submission...</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No test results yet. Complete a test to see results here.</p>
-            )}
-          </div>
-        )}
-
-        {/* TAB: MESSAGES */}
-        {tab === 'messages' && (
-          <div className="card">
-            <h3>Messages</h3>
-            <p>Message feature coming soon...</p>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-};
-
-// ───────────────────────────────────────────────────────────────────────
-// ROUTER
+// MAIN ROUTING
 const AppRouter = () => {
   const { isLoggedIn } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
 
-  if (!isLoggedIn && !['/', '/about', '/get-started', '/login', '/register'].includes(location.pathname)) {
+  // Lazy load ApplicantDashboard
+  const ApplicantDash = React.lazy(() => import('./components/ApplicantDashboard.jsx'));
+
+  if (!isLoggedIn && ![
+    '/', '/about', '/get-started', '/login', '/register'
+  ].some(path => location.pathname.startsWith(path))) {
     return <Navigate to="/login" replace />;
   }
 
@@ -904,16 +357,21 @@ const AppRouter = () => {
     <>
       {!location.pathname.includes('dashboard') && <Header />}
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/about" element={<AboutUs />} />
-        <Route path="/get-started" element={<GetStarted />} />
-        <Route path="/login" element={<LoginForm />} />
-        <Route path="/dashboard/applicant" element={<ApplicantDashboard />} />
-        <Route path="/dashboard/applicant/test/:applicationId" element={<TestFlow />} />
-        <Route path="/dashboard/applicant/apply/:jobId" element={<ApplyPage />} />
-        <Route path="/dashboard/applicant/results/:applicationId" element={<ResultsPage />} />
+        <Route path="/" element={<><LandingPage /><Footer /></>} />
+        <Route path="/about" element={<><AboutUs /><Footer /></>} />
+        <Route path="/get-started" element={<><GetStarted /><Footer /></>} />
+        <Route path="/login" element={<><LoginForm /><Footer /></>} />
+        <Route 
+          path="/dashboard/applicant" 
+          element={isLoggedIn ? (
+            <React.Suspense fallback={<div style={{ padding: '20px', textAlign: 'center' }}>Loading dashboard...</div>}>
+              <ApplicantDash />
+            </React.Suspense>
+          ) : (
+            <Navigate to="/login" replace />
+          )} 
+        />
       </Routes>
-      {!location.pathname.includes('dashboard') && <Footer />}
     </>
   );
 };

@@ -3,19 +3,26 @@ Sentence-BERT embedding engine for similarity scoring
 """
 import os
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from models.schemas import RubricDescriptor, CompetencyLevel
 
-try:
-    from sentence_transformers import SentenceTransformer, util
-    from sklearn import cluster
-    MODEL_AVAILABLE = True
-except ImportError:
-    MODEL_AVAILABLE = False
-    print("Warning: Sentence-BERT or scikit-learn not found. Embedding features will be limited.")
-    SBERT_AVAILABLE = True
-except ImportError:
-    SBERT_AVAILABLE = False
+MODEL_AVAILABLE = True
+SBERT_AVAILABLE = True
+_model_instance = None
+
+def _load_models():
+    """Lazy load models to avoid Windows multiprocessing issues"""
+    global _model_instance, MODEL_AVAILABLE, SBERT_AVAILABLE
+    try:
+        from sentence_transformers import SentenceTransformer, util
+        from sklearn import cluster
+        MODEL_AVAILABLE = True
+        SBERT_AVAILABLE = True
+        return SentenceTransformer, util, cluster
+    except ImportError as e:
+        MODEL_AVAILABLE = False
+        SBERT_AVAILABLE = False
+        raise ImportError(f"Failed to load sentence-transformers or sklearn: {e}")
 
 
 class EmbeddingEngine:
@@ -28,15 +35,27 @@ class EmbeddingEngine:
 
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         """
-        Initialize embedding engine
+        Initialize embedding engine with lazy loading
 
         Args:
             model_name: HuggingFace model identifier for sentence embeddings
         """
         self.model_name = model_name
-        print(f"Loading embedding model: {model_name}")
-        self.model = SentenceTransformer(model_name)
-        print("Embedding model loaded successfully")
+        self.model = None
+        self._load_model()
+
+    def _load_model(self):
+        """Lazy load the model to avoid multiprocessing issues"""
+        if self.model is not None:
+            return
+        try:
+            SentenceTransformer, util, cluster = _load_models()
+            print(f"Loading embedding model: {self.model_name}")
+            self.model = SentenceTransformer(self.model_name)
+            print("Embedding model loaded successfully")
+        except ImportError as e:
+            print(f"Warning: Could not load embedding model: {e}")
+            self.model = None
 
     def generate_embedding(self, text: str) -> np.ndarray:
         """

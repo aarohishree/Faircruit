@@ -37,6 +37,7 @@ from database import (
     get_feedback_collection,
     get_error_logs_collection,
 )
+from question_generator import QuestionGenerator
 from utils import safe_object_id
 # backend/main.py
 from models.schemas import (
@@ -1012,9 +1013,116 @@ app.include_router(messaging_router, prefix=settings.API_V1_STR)
 app.include_router(feedback_router, prefix=settings.API_V1_STR)
 app.include_router(ws_router, prefix=settings.API_V1_STR)
 app.include_router(general_router, prefix=settings.API_V1_STR)
-app.include_router(ml_router.router)
+if ml_router is not None:
+    app.include_router(ml_router.router)
 
-# --- Run ---
+# --- Question Generation Endpoints ---
+qgen = QuestionGenerator(api_key=settings.GEMINI_API_KEY) if settings.GEMINI_API_KEY else None
+
+@applicant_router.post("/generate-questions/{job_id}")
+async def generate_test_questions(
+    job_id: str,
+    current_user: UserInDB = Depends(applicant_only),
+    request: Request = None
+):
+    """Generate 4 questions (one per level) for the test"""
+    start_time = datetime.utcnow()
+    try:
+        if not qgen:
+            raise HTTPException(status_code=503, detail="Question generation service unavailable")
+        
+        job_doc = await get_jobs_collection().find_one({"_id": safe_object_id(job_id, "job_id")})
+        if not job_doc:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        questions = qgen.generate_questions_for_job(
+            job_title=job_doc.get("title", ""),
+            job_description=job_doc.get("description", ""),
+            role=job_doc.get("role", "Software Engineer")
+        )
+        
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        await log_event(str(current_user.id), "GENERATE", "QUESTIONS", {"job_id": job_id}, request, duration)
+        
+        return {
+            "questions": questions,
+            "job_id": job_id,
+            "job_title": job_doc.get("title"),
+            "generated_at": datetime.utcnow()
+        }
+    except Exception as e:
+        logger.error(f"Error generating questions: {e}")
+        await log_error(str(current_user.id), "QUESTION_GENERATION_ERROR", str(e))
+        raise
+
+@applicant_router.get("/jobs", response_model=PaginatedResponse)
+async def get_available_jobs(
+    page: int = 1,
+    size: int = 20,
+    role: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: UserInDB = Depends(applicant_only),
+    request: Request = None
+):
+    """Get all available job listings for applicants"""
+    start_time = datetime.utcnow()
+    try:
+        skip = (page - 1) * size
+        query = {"status": "open"}
+        
+        if role:
+            query["role"] = role
+        
+        if search:
+            query["$or"] = [
+                {"title": {"$regex": search, "$options": "i"}},
+                {"description": {"$regex": search, "$options": "i"}},
+                {"company": {"$regex": search, "$options": "i"}}
+            ]
+        
+        total = await get_jobs_collection().count_documents(query)
+        jobs = []
+        cursor = get_jobs_collection().find(query).sort("created_at", -1).skip(skip).limit(size)
+        
+        async for job_doc in cursor:
+            job = JobDB(**job_doc)
+            # Add application count for display
+            app_count = await get_applications_collection().count_documents({"job_id": str(job.id)})
+            jobs.append({
+                **job.model_dump(),
+                "application_count": app_count
+            })
+        
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        await log_event(str(current_user.id), "VIEW", "JOB_LISTINGS", {"page": page, "search": search}, request, duration)
+        
+        return PaginatedResponse(items=jobs, total=total, page=page, size=size)
+    except Exception as e:
+        await log_error(str(current_user.id), "VIEW_JOBS_ERROR", str(e))
+        raise
+
+@applicant_router.get("/jobs/{job_id}", response_model=JobDB)
+async def get_job_details(
+    job_id: str,
+    current_user: UserInDB = Depends(applicant_only),
+    request: Request = None
+):
+    """Get detailed information about a specific job"""
+    start_time = datetime.utcnow()
+    try:
+        job_doc = await get_jobs_collection().find_one({"_id": safe_object_id(job_id, "job_id")})
+        if not job_doc:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        await log_event(str(current_user.id), "VIEW", "JOB_DETAIL", {"job_id": job_id}, request, duration)
+        
+        return JobDB(**job_doc)
+    except Exception as e:
+        await log_error(str(current_user.id), "VIEW_JOB_DETAIL_ERROR", str(e))
+        raise
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
